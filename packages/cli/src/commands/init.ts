@@ -337,7 +337,11 @@ export async function executeInitCommand(arguments_: CliArguments, _io: CommandI
       operating_map: {
         installed_skills: scan.installations.map((record) => record.path_alias),
         workspaces,
-        host_sources: [...new Set(scan.installations.map((record) => record.source))].sort(),
+        hosts: scan.environment.hosts,
+        installed_plugins: scan.environment.plugins.map((record) => record.path_alias),
+        declared_mcp_servers: scan.environment.mcp_servers.map((record) => record.path_alias),
+        instruction_files: scan.environment.instruction_files.map((record) => record.path_alias),
+        repositories: scan.environment.repositories,
         profile_configured: effectiveProfile !== null,
       },
       interview: interview(currentConfig.value, effectiveProfile, scan, workspaces),

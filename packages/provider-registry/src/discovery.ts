@@ -19,13 +19,22 @@ export interface DiscoveryRecord {
 }
 
 export interface DiscoveryWarning {
-  code: "INVALID_METADATA" | "METADATA_TOO_LARGE" | "ROOT_LIMIT" | "SKILL_LIMIT" | "SYMLINK_SKIPPED" | "INVENTORY_LIMIT";
+  code: "INVALID_METADATA" | "INVALID_MCP_METADATA" | "METADATA_TOO_LARGE" | "ROOT_LIMIT" | "SKILL_LIMIT" | "SYMLINK_SKIPPED" | "INVENTORY_LIMIT" | "ENVIRONMENT_LIMIT";
   path_alias: string;
+}
+
+export interface EnvironmentDiscovery {
+  hosts: Array<{ host: DiscoveryRecord["source"]; detected: boolean; version: "unknown"; detection: "metadata-only" }>;
+  plugins: Array<{ host: DiscoveryRecord["source"]; install_scope: InstallScope; plugin_id: string; version: "unknown"; path_alias: string }>;
+  mcp_servers: Array<{ install_scope: InstallScope; server_id: string; path_alias: string }>;
+  instruction_files: Array<{ install_scope: InstallScope; kind: "agents" | "claude" | "cursor-rule"; path_alias: string }>;
+  repositories: Array<{ path_alias: "selected-project"; selected: true }>;
 }
 
 export interface DiscoveryReport {
   schema_version: 1;
   installations: DiscoveryRecord[];
+  environment: EnvironmentDiscovery;
   warnings: DiscoveryWarning[];
   truncated: boolean;
   bounds: {
@@ -64,6 +73,12 @@ const COLLECTION_NAMESPACES = new Map([
   ["gstack", "gstack"],
   ["superpowers", "superpowers"],
 ]);
+const HOST_DIRECTORY: Record<DiscoveryRecord["source"], string[]> = {
+  codex: [".agents", ".codex"],
+  "claude-code": [".claude"],
+  cursor: [".cursor"],
+};
+const MAX_ENVIRONMENT_ENTRIES = 256;
 
 function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -184,6 +199,130 @@ function rank(scope: InstallScope): number {
   return scope === "project" ? 2 : 1;
 }
 
+function safeMetadataId(value: string): string {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return SKILL_ID.test(normalized) ? normalized : `metadata-${digest(value).slice(0, 12)}`;
+}
+
+async function isSafeDirectory(path: string): Promise<boolean> {
+  try {
+    const metadata = await lstat(path);
+    return metadata.isDirectory() && !metadata.isSymbolicLink();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function collectDirectoryNames(
+  path: string,
+  alias: string,
+  warnings: DiscoveryWarning[],
+): Promise<string[]> {
+  if (!await isSafeDirectory(path)) return [];
+  const result: string[] = [];
+  const entries = (await readdir(path, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name));
+  for (const entry of entries.slice(0, MAX_ENVIRONMENT_ENTRIES)) {
+    const entryAlias = `${alias}:${safeMetadataId(entry.name)}`;
+    if (entry.isSymbolicLink()) {
+      warnings.push({ code: "SYMLINK_SKIPPED", path_alias: entryAlias });
+      continue;
+    }
+    if (entry.isDirectory()) result.push(safeMetadataId(entry.name));
+  }
+  if (entries.length > MAX_ENVIRONMENT_ENTRIES) warnings.push({ code: "ENVIRONMENT_LIMIT", path_alias: alias });
+  return result;
+}
+
+async function hasSafeFile(path: string): Promise<boolean> {
+  try {
+    const metadata = await lstat(path);
+    return metadata.isFile() && !metadata.isSymbolicLink();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function mcpNames(path: string, alias: string, warnings: DiscoveryWarning[]): Promise<string[]> {
+  if (!await hasSafeFile(path)) return [];
+  try {
+    const bytes = await readBoundedFile(path, DEFAULT_BOUNDS.maximum_metadata_bytes);
+    if (bytes === null) {
+      warnings.push({ code: "METADATA_TOO_LARGE", path_alias: alias });
+      return [];
+    }
+    const value = JSON.parse(bytes.toString("utf8")) as unknown;
+    if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid");
+    const record = value as Record<string, unknown>;
+    const servers = record.mcpServers ?? record.servers;
+    if (servers === null || typeof servers !== "object" || Array.isArray(servers)) throw new Error("invalid");
+    return Object.keys(servers as Record<string, unknown>).slice(0, MAX_ENVIRONMENT_ENTRIES).map(safeMetadataId).sort();
+  } catch {
+    warnings.push({ code: "INVALID_MCP_METADATA", path_alias: alias });
+    return [];
+  }
+}
+
+async function discoverEnvironment(homeRoot: string, projectRoot: string | undefined, warnings: DiscoveryWarning[]): Promise<EnvironmentDiscovery> {
+  const hosts: EnvironmentDiscovery["hosts"] = [];
+  for (const host of ["codex", "claude-code", "cursor"] as const) {
+    const detected = (await Promise.all(HOST_DIRECTORY[host].map((directory) => isSafeDirectory(join(homeRoot, directory))))).some(Boolean);
+    hosts.push({ host, detected, version: "unknown", detection: "metadata-only" });
+  }
+  const plugins: EnvironmentDiscovery["plugins"] = [];
+  for (const [host, directory] of [["codex", ".codex"], ["claude-code", ".claude"], ["cursor", ".cursor"]] as const) {
+    const roots: Array<{ scope: InstallScope; path: string }> = [{ scope: "user", path: join(homeRoot, directory, "plugins") }];
+    if (projectRoot) roots.push({ scope: "project", path: join(projectRoot, directory, "plugins") });
+    for (const root of roots) {
+      const ids = await collectDirectoryNames(root.path, `${host}:${root.scope}:plugins`, warnings);
+      for (const pluginId of ids) plugins.push({ host, install_scope: root.scope, plugin_id: pluginId, version: "unknown", path_alias: `${host}:${root.scope}:plugin:${pluginId}` });
+    }
+  }
+  const mcpServers: EnvironmentDiscovery["mcp_servers"] = [];
+  if (projectRoot) {
+    for (const [relative, alias] of [[".mcp.json", "project:mcp"], [".cursor/mcp.json", "cursor:project:mcp"], [".claude/mcp.json", "claude-code:project:mcp"], [".codex/mcp.json", "codex:project:mcp"]] as const) {
+      for (const serverId of await mcpNames(join(projectRoot, relative), alias, warnings)) {
+        mcpServers.push({ install_scope: "project", server_id: serverId, path_alias: `mcp:project:${serverId}` });
+      }
+    }
+  }
+  const instructionFiles: EnvironmentDiscovery["instruction_files"] = [];
+  const candidates: Array<{ path: string; scope: InstallScope; kind: "agents" | "claude"; alias: string }> = [
+    { path: join(homeRoot, "AGENTS.md"), scope: "user", kind: "agents", alias: "user:agents-md" },
+    { path: join(homeRoot, "CLAUDE.md"), scope: "user", kind: "claude", alias: "user:claude-md" },
+  ];
+  if (projectRoot) candidates.push(
+    { path: join(projectRoot, "AGENTS.md"), scope: "project", kind: "agents", alias: "project:agents-md" },
+    { path: join(projectRoot, "CLAUDE.md"), scope: "project", kind: "claude", alias: "project:claude-md" },
+  );
+  for (const candidate of candidates) if (await hasSafeFile(candidate.path)) {
+    instructionFiles.push({ install_scope: candidate.scope, kind: candidate.kind, path_alias: candidate.alias });
+  }
+  if (projectRoot) {
+    const cursorRules = join(projectRoot, ".cursor", "rules");
+    if (await isSafeDirectory(cursorRules)) {
+      const entries = (await readdir(cursorRules, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name));
+      for (const entry of entries.slice(0, MAX_ENVIRONMENT_ENTRIES)) {
+        if (entry.isFile() && !entry.isSymbolicLink()) instructionFiles.push({
+          install_scope: "project", kind: "cursor-rule", path_alias: `cursor:project:rule:${safeMetadataId(entry.name)}`,
+        });
+      }
+      if (entries.length > MAX_ENVIRONMENT_ENTRIES) warnings.push({ code: "ENVIRONMENT_LIMIT", path_alias: "cursor:project:rules" });
+    }
+  }
+  plugins.sort((left, right) => left.path_alias.localeCompare(right.path_alias));
+  mcpServers.sort((left, right) => left.path_alias.localeCompare(right.path_alias));
+  instructionFiles.sort((left, right) => left.path_alias.localeCompare(right.path_alias));
+  return {
+    hosts,
+    plugins,
+    mcp_servers: mcpServers,
+    instruction_files: instructionFiles,
+    repositories: projectRoot ? [{ path_alias: "selected-project", selected: true }] : [],
+  };
+}
+
 function applyShadowing(records: DiscoveryRecord[]): void {
   const groups = new Map<string, DiscoveryRecord[]>();
   for (const record of records) {
@@ -260,7 +399,8 @@ export async function discoverKnownHosts(options: DiscoveryOptions = {}): Promis
     maximum_skills_per_root: options.maximumSkillsPerRoot ?? DEFAULT_BOUNDS.maximum_skills_per_root,
     maximum_metadata_bytes: options.maximumMetadataBytes ?? DEFAULT_BOUNDS.maximum_metadata_bytes,
   };
-  const selectedRoots = [...(options.roots ?? defaultRoots(options.homeRoot ?? homedir(), options.projectRoot))];
+  const selectedHomeRoot = options.homeRoot ?? homedir();
+  const selectedRoots = [...(options.roots ?? defaultRoots(selectedHomeRoot, options.projectRoot))];
   const roots = selectedRoots.slice(0, bounds.maximum_hosts);
   const warnings: DiscoveryWarning[] = [];
   const inventoryBounds = {
@@ -327,5 +467,6 @@ export async function discoverKnownHosts(options: DiscoveryOptions = {}): Promis
     || left.skill_id.localeCompare(right.skill_id)
     || rank(left.install_scope) - rank(right.install_scope)
     || left.path_alias.localeCompare(right.path_alias));
-  return { schema_version: 1, installations, warnings, truncated, bounds };
+  const environment = await discoverEnvironment(selectedHomeRoot, options.projectRoot, warnings);
+  return { schema_version: 1, installations, environment, warnings, truncated, bounds };
 }

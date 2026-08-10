@@ -174,6 +174,9 @@ test("clean init uses adaptive defaults and previews before creating personal co
   assert.equal(data.interview.questions.length <= 3, true);
   assert.equal(data.interview.defaults.telemetry_enabled, false);
   assert.equal(data.interview.defaults.routing_lane, "adaptive");
+  assert.deepEqual(data.operating_map.hosts.map((host: { host: string }) => host.host), ["codex", "claude-code", "cursor"]);
+  assert.deepEqual(data.operating_map.installed_plugins, []);
+  assert.deepEqual(data.operating_map.declared_mcp_servers, []);
   await assert.rejects(readFile(join(config, "config.yaml")));
 
   const stale = invoke(home, ["init", "--config", config, "--apply", "0".repeat(64)]);
