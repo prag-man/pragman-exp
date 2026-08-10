@@ -8,6 +8,7 @@ import { parse } from "yaml";
 import routingSchema from "../../../config/schemas/routing.schema.json" with { type: "json" };
 import {
   ConfigError,
+  contentDigest,
   loadConfigurationContext,
   mergeConfiguration,
   normalizeAbsolutePath,
@@ -18,6 +19,7 @@ import {
   type LoadedConfigurationContext,
 } from "../../../config/src/index.ts";
 import type { Lane, RouteInput, RoutingRule, RuleLayer, Sensitivity } from "../../../router/src/index.ts";
+import type { WorkflowWeight } from "../../../router/src/types.ts";
 import type { CliArguments } from "../args.ts";
 
 interface RoutingConfiguration extends JsonObject {
@@ -32,11 +34,13 @@ export interface RouteContextPolicyEvidence {
   provenance: FieldProvenance | null;
   layers: {
     personal: true;
+    personal_profile: boolean;
     primary_workspace: string | null;
     project: string | null;
     additional_workspaces: string[];
   };
   conflict_paths: string[];
+  conflicts: Array<{ path: string; choices: Array<{ workspace_id: string; value_digest: string }> }>;
 }
 
 export interface RouteContextResolution {
@@ -46,6 +50,9 @@ export interface RouteContextResolution {
   routingRules: RoutingRule[];
   projectPreferences: string[];
   workspacePreferences: string[];
+  personalProfilePreferences: string[];
+  personalProfileAvoidances: string[];
+  preferredWorkflowWeight?: WorkflowWeight;
   explicitLane?: Lane;
   evidence: RouteContextPolicyEvidence | null;
 }
@@ -94,6 +101,30 @@ async function loadOptionalRouting(root: string, relativePath: string): Promise<
 function providers(configuration: RoutingConfiguration | null): string[] {
   const selected = configuration?.defaults.providers;
   return Array.isArray(selected) ? selected.filter((value): value is string => typeof value === "string") : [];
+}
+
+function profileRouting(context: LoadedConfigurationContext): {
+  lane?: Lane;
+  providers: string[];
+  avoidProviders: string[];
+  preferredWorkflowWeight?: WorkflowWeight;
+} {
+  const preferences = context.profile?.preferences;
+  if (!object(preferences)) return { providers: [], avoidProviders: [] };
+  const lane = preferences.routing_lane;
+  const weight = preferences.workflow_weight;
+  const configuredProviders = Array.isArray(preferences.providers)
+    ? preferences.providers.filter((value): value is string => typeof value === "string")
+    : [];
+  const avoidProviders = Array.isArray(preferences.avoid_providers)
+    ? preferences.avoid_providers.filter((value): value is string => typeof value === "string")
+    : [];
+  return {
+    providers: configuredProviders,
+    avoidProviders,
+    ...(lane === "fast" || lane === "standard" || lane === "deep" || lane === "operational" ? { lane } : {}),
+    ...(weight === "light" || weight === "standard" || weight === "heavy" ? { preferredWorkflowWeight: weight } : {}),
+  };
 }
 
 function routerLayer(layer: string): RuleLayer {
@@ -171,6 +202,8 @@ export async function resolveRouteContext(arguments_: CliArguments, input: Route
       routingRules: [],
       projectPreferences: [],
       workspacePreferences: [],
+      personalProfilePreferences: [],
+      personalProfileAvoidances: [],
       evidence: null,
     };
   }
@@ -193,9 +226,13 @@ export async function resolveRouteContext(arguments_: CliArguments, input: Route
     additionalWorkspaces: context.additionalWorkspaces.map((workspace) => ({ workspaceId: workspace.workspace_id, value: workspace })),
   });
 
-  const personalLane = object(context.personal.routing) && typeof context.personal.routing.default_lane === "string"
+  const configuredPersonalLane = object(context.personal.routing) && typeof context.personal.routing.default_lane === "string"
     ? context.personal.routing.default_lane
     : "adaptive";
+  const personalProfileRouting = profileRouting(context);
+  const personalLane = configuredPersonalLane === "adaptive"
+    ? personalProfileRouting.lane ?? "adaptive"
+    : configuredPersonalLane;
   const [projectRouting, workspaceRouting, ...additionalRouting] = await Promise.all([
     context.project ? loadOptionalRouting(context.project.root, ".pragman/routing.yaml") : Promise.resolve(null),
     context.primaryWorkspace ? loadOptionalRouting(context.primaryWorkspace.root, "routing.yaml") : Promise.resolve(null),
@@ -222,11 +259,18 @@ export async function resolveRouteContext(arguments_: CliArguments, input: Route
     provenance: mergedContext.provenance["/context_sources"] ?? null,
     layers: {
       personal: true,
+      personal_profile: context.profile !== undefined,
       primary_workspace: context.primaryWorkspace?.workspace_id ?? null,
       project: context.project?.project_id ?? null,
       additional_workspaces: context.additionalWorkspaces.map((workspace) => workspace.workspace_id),
     },
     conflict_paths: [...new Set(secondaryConflicts.map((conflict) => conflict.path))].sort(),
+    conflicts: secondaryConflicts.map((conflict) => ({
+      path: conflict.path,
+      choices: conflict.values.flatMap((choice) => object(choice) && typeof choice.workspaceId === "string"
+        ? [{ workspace_id: choice.workspaceId, value_digest: contentDigest(JSON.stringify(choice.value)) }]
+        : []),
+    })),
   };
   const lane = object(mergedRouting.value.defaults) ? mergedRouting.value.defaults.lane : undefined;
   return {
@@ -236,6 +280,9 @@ export async function resolveRouteContext(arguments_: CliArguments, input: Route
     routingRules: rules,
     projectPreferences: providers(projectRouting),
     workspacePreferences: providers(workspaceRouting),
+    personalProfilePreferences: personalProfileRouting.providers,
+    personalProfileAvoidances: personalProfileRouting.avoidProviders,
+    ...(personalProfileRouting.preferredWorkflowWeight ? { preferredWorkflowWeight: personalProfileRouting.preferredWorkflowWeight } : {}),
     ...(lane === "fast" || lane === "standard" || lane === "deep" || lane === "operational" ? { explicitLane: lane } : {}),
     evidence,
   };

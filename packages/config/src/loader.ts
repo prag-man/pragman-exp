@@ -66,6 +66,15 @@ export async function loadPersonalProfile(personalRoot: string): Promise<Persona
   return parseAndValidate(personalProfilePath(personalRoot), validators.profile, "profile");
 }
 
+async function loadOptionalPersonalProfile(personalRoot: string): Promise<PersonalProfile | undefined> {
+  try {
+    return await loadPersonalProfile(personalRoot);
+  } catch (error) {
+    if (error instanceof ConfigError && error.code === "NOT_FOUND") return undefined;
+    throw error;
+  }
+}
+
 export async function loadWorkspaceConfig(personalRoot: string, workspaceId: string): Promise<WorkspaceConfig> {
   const config = await parseAndValidate(workspaceConfigPath(personalRoot, workspaceId), validators.workspace, "workspace");
   if (config.workspace_id !== workspaceId) {
@@ -99,7 +108,11 @@ export async function loadConfigurationContext(options: {
 }): Promise<LoadedConfigurationContext> {
   const personalRoot = normalizeAbsolutePath(options.personalRoot);
   const personalPath = personalConfigPath(personalRoot);
-  const personal = await loadPersonalConfig(personalRoot);
+  const [personal, profile] = await Promise.all([
+    loadPersonalConfig(personalRoot),
+    loadOptionalPersonalProfile(personalRoot),
+  ]);
+  const profilePath = personalProfilePath(personalRoot);
   if (options.projectRoot) {
     const projectRoot = normalizeAbsolutePath(options.projectRoot);
     const project = await loadProjectManifest(projectRoot);
@@ -115,11 +128,13 @@ export async function loadConfigurationContext(options: {
     return {
       mode: "project-linked",
       personal,
+      ...(profile ? { profile } : {}),
       primaryWorkspace,
       project,
       additionalWorkspaces,
       paths: {
         personal: personalPath,
+        ...(profile ? { profile: profilePath } : {}),
         primaryWorkspace: workspaceConfigPath(personalRoot, project.workspace),
         project: projectManifestPath(projectRoot),
         additionalWorkspaces: additionalIds.map((id) => workspaceConfigPath(personalRoot, id)),
@@ -130,14 +145,22 @@ export async function loadConfigurationContext(options: {
     return {
       mode: "workspace-only",
       personal,
+      ...(profile ? { profile } : {}),
       primaryWorkspace: await loadWorkspaceConfig(personalRoot, options.workspaceId),
       additionalWorkspaces: [],
       paths: {
         personal: personalPath,
+        ...(profile ? { profile: profilePath } : {}),
         primaryWorkspace: workspaceConfigPath(personalRoot, options.workspaceId),
         additionalWorkspaces: [],
       },
     };
   }
-  return { mode: "personal-only", personal, additionalWorkspaces: [], paths: { personal: personalPath, additionalWorkspaces: [] } };
+  return {
+    mode: "personal-only",
+    personal,
+    ...(profile ? { profile } : {}),
+    additionalWorkspaces: [],
+    paths: { personal: personalPath, ...(profile ? { profile: profilePath } : {}), additionalWorkspaces: [] },
+  };
 }

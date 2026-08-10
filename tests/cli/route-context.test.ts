@@ -86,6 +86,30 @@ test("personal-only routing honors the configured default lane", async () => {
   assert.equal(JSON.parse(routed.stdout).data.contract.lane, "deep");
 });
 
+test("personal profile routing defaults influence later routes without exposing profile prose", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pragman-route-profile-"));
+  const config = join(root, "config");
+  const providers = await providerDirectory(root);
+  await writeYaml(join(config, "config.yaml"), `${personal}routing:\n  default_lane: adaptive\n`);
+  await writeYaml(join(config, "profile.yaml"), `schema_version: 1
+profile_id: product-leader
+roles: [Founder]
+responsibilities: [Confidential product direction]
+preferences:
+  routing_lane: deep
+  providers: [pragman:beta]
+`);
+
+  const routed = invoke(["route", "--config", config], routeInput(), providers);
+  assert.equal(routed.status, 0, `${routed.stderr}\n${routed.stdout}`);
+  const data = JSON.parse(routed.stdout).data;
+  assert.equal(data.contract.lane, "deep");
+  assert.deepEqual(data.contract.providers, ["pragman:beta"]);
+  assert.equal(data.context_policy_evidence.layers.personal_profile, true);
+  assert.equal(routed.stdout.includes("Confidential product direction"), false);
+  assert.equal(routed.stdout.includes("Founder"), false);
+});
+
 function workspace(id: string, root: string, sensitivity = "internal"): string {
   return `schema_version: 1
 workspace_id: ${id}
@@ -156,4 +180,21 @@ additional_workspaces: [client-a, client-b]
   assert.equal(error.code, "NEEDS_INPUT");
   assert.equal(error.details.contextMode, "project-linked");
   assert.equal(error.details.requiredInput, "resolve-secondary-workspace-conflict:/sensitivity");
+  assert.deepEqual(error.details.context_policy_evidence.conflicts[0].choices.map((choice: { workspace_id: string }) => choice.workspace_id), ["client-a", "client-b"]);
+
+  const resolved = invoke(["route", "--config", config, "--project-root", projectRoot], {
+    ...routeInput({ project: "demo" }),
+    resolved_secondary_conflicts: { "/sensitivity": "client-b" },
+  }, providers);
+  assert.equal(resolved.status, 0, `${resolved.stderr}\n${resolved.stdout}`);
+  const contract = JSON.parse(resolved.stdout).data.contract;
+  assert.deepEqual(contract.unresolved_conflicts, []);
+  assert.equal(contract.assumptions.some((entry: string) => entry === "resolved-secondary-conflict:/sensitivity:client-b"), true);
+
+  const forged = invoke(["route", "--config", config, "--project-root", projectRoot], {
+    ...routeInput({ project: "demo" }),
+    resolved_secondary_conflicts: { "/sensitivity": "unknown-workspace" },
+  }, providers);
+  assert.equal(forged.status, 3, forged.stderr);
+  assert.equal(JSON.parse(forged.stdout).error.details.requiredInput, "resolve-secondary-workspace-conflict:/sensitivity");
 });
