@@ -16,9 +16,9 @@ Build a reviewable operating map from bounded evidence, then change only what th
    - **Populated:** valid configuration or healthy installations exist.
    - **Broken:** metadata/configuration is invalid or incompatible.
    - **Shadowed:** identical project metadata may shadow user metadata; differing digests are a blocking conflict.
-4. Interview adaptively. Reuse discovered answers and configured defaults. Ask only questions whose answers change responsibilities, workspace boundaries, recurring work, quality/speed/autonomy posture, approvals, output preferences, or prohibitions. Batch at most three focused questions; do not ask for trusted tools or workspace inventory already evidenced by the scan.
+4. Interview adaptively. Reuse discovered answers and configured defaults. Ask only questions whose answers change responsibilities, workspace boundaries, recurring work, quality/speed/autonomy posture, approvals, output preferences, or prohibitions. Batch at most three focused questions; do not ask for trusted tools or workspace inventory already evidenced by the scan. To persist or later revise personal answers, place a complete schema-valid profile document in a user-selected JSON file and run `pragman init --file PROFILE.json --json`; never put answer content, the selected path, or secrets in the operating-map output.
 5. Present one content-free operating map: host/source aliases, exact discovered identities, health/conflicts, workspace aliases, interview assumptions, proposed operations, privacy impact, and preview digest. Do not reveal raw paths, source bodies, secrets, or credential existence.
-6. Stop on broken or conflicting state and request the specific repair choice. Otherwise apply only the unchanged approved digest. A preview is not a write.
+6. Stop on broken or conflicting state and request the specific repair choice. Otherwise apply only the unchanged approved digest, which binds every proposed config/profile operation into one transaction. A preview is not a write.
 7. Run `pragman doctor --json` after apply. Exercise the returned read-only sample route. A manual handoff is `handoff-required`; never report provider execution or routing success without an available router/provider result.
 
 ## CLI unavailable

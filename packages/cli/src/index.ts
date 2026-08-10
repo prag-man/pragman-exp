@@ -54,7 +54,7 @@ const COMMANDS = [
 ];
 
 const COMMAND_USAGE: Record<string, string> = {
-  init: "pragman init [--config DIR] [--project-root DIR] [--apply DIGEST]",
+  init: "pragman init [--file PROFILE.json] [--config DIR] [--project-root DIR] [--apply DIGEST]",
   scan: "pragman scan [--project-root DIR]",
   doctor: "pragman doctor [--config DIR] [--project-root DIR]",
   route: "pragman route [--file INPUT.json] [--provider ID] [--host HOST] [--project-root DIR]",

@@ -4,17 +4,38 @@ import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import { parse } from "yaml";
 
 import personalSchema from "../schemas/personal-config.schema.json" with { type: "json" };
+import profileSchema from "../schemas/profile.schema.json" with { type: "json" };
 import projectSchema from "../schemas/project.schema.json" with { type: "json" };
 import workspaceSchema from "../schemas/workspace.schema.json" with { type: "json" };
-import { normalizeAbsolutePath, personalConfigPath, projectManifestPath, resolveContainedPath, workspaceConfigPath } from "./paths.ts";
-import { ConfigError, type JsonObject, type LoadedConfigurationContext, type PersonalConfig, type ProjectManifest, type WorkspaceConfig } from "./types.ts";
+import { normalizeAbsolutePath, personalConfigPath, personalProfilePath, projectManifestPath, resolveContainedPath, workspaceConfigPath } from "./paths.ts";
+import { ConfigError, type JsonObject, type LoadedConfigurationContext, type PersonalConfig, type PersonalProfile, type ProjectManifest, type WorkspaceConfig } from "./types.ts";
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, useDefaults: false, removeAdditional: false, coerceTypes: false });
 const validators = {
   personal: ajv.compile(personalSchema) as ValidateFunction<PersonalConfig>,
+  profile: ajv.compile(profileSchema) as ValidateFunction<PersonalProfile>,
   workspace: ajv.compile(workspaceSchema) as ValidateFunction<WorkspaceConfig>,
   project: ajv.compile(projectSchema) as ValidateFunction<ProjectManifest>,
 };
+
+function assertCompatibleVersion(value: unknown, kind: string): void {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const version = (value as Record<string, unknown>).schema_version;
+    if (typeof version === "number" && version > 1) {
+      throw new ConfigError("INCOMPATIBLE_VERSION", `${kind} schema version ${version} is newer than supported version 1`, { supportedVersion: 1 });
+    }
+  }
+}
+
+function validateValue<T>(value: unknown, validator: ValidateFunction<T>, kind: string): T {
+  assertCompatibleVersion(value, kind);
+  if (!validator(value)) {
+    throw new ConfigError("INVALID_CONFIGURATION", `${kind} configuration failed schema validation`, {
+      issues: (validator.errors ?? []).map((issue) => `${issue.instancePath || "/"} ${issue.message ?? "is invalid"}`),
+    });
+  }
+  return value;
+}
 
 async function parseAndValidate<T extends JsonObject>(path: string, validator: ValidateFunction<T>, kind: string): Promise<T> {
   let raw: string;
@@ -30,22 +51,19 @@ async function parseAndValidate<T extends JsonObject>(path: string, validator: V
   } catch {
     throw new ConfigError("INVALID_CONFIGURATION", `${kind} configuration is not valid YAML`);
   }
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const version = (value as Record<string, unknown>).schema_version;
-    if (typeof version === "number" && version > 1) {
-      throw new ConfigError("INCOMPATIBLE_VERSION", `${kind} schema version ${version} is newer than supported version 1`, { supportedVersion: 1 });
-    }
-  }
-  if (!validator(value)) {
-    throw new ConfigError("INVALID_CONFIGURATION", `${kind} configuration failed schema validation`, {
-      issues: (validator.errors ?? []).map((issue) => `${issue.instancePath || "/"} ${issue.message ?? "is invalid"}`),
-    });
-  }
-  return value;
+  return validateValue(value, validator, kind);
 }
 
 export async function loadPersonalConfig(personalRoot: string): Promise<PersonalConfig> {
   return parseAndValidate(personalConfigPath(personalRoot), validators.personal, "personal");
+}
+
+export function validatePersonalProfile(value: unknown): PersonalProfile {
+  return validateValue(value, validators.profile, "profile");
+}
+
+export async function loadPersonalProfile(personalRoot: string): Promise<PersonalProfile> {
+  return parseAndValidate(personalProfilePath(personalRoot), validators.profile, "profile");
 }
 
 export async function loadWorkspaceConfig(personalRoot: string, workspaceId: string): Promise<WorkspaceConfig> {

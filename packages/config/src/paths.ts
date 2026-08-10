@@ -30,6 +30,10 @@ export function personalConfigPath(personalRoot: string): string {
   return join(normalizeAbsolutePath(personalRoot), "config.yaml");
 }
 
+export function personalProfilePath(personalRoot: string): string {
+  return join(normalizeAbsolutePath(personalRoot), "profile.yaml");
+}
+
 export function workspaceConfigPath(personalRoot: string, workspaceId: string): string {
   return join(normalizeAbsolutePath(personalRoot), "workspaces", assertSlug(workspaceId, "workspace id"), "workspace.yaml");
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,11 +31,136 @@ async function writeSkill(root: string, description: string) {
   await writeFile(join(root, "SKILL.md"), `---\nname: review\ndescription: ${description}\n---\n\n# Review\n`);
 }
 
-test("argument grammar recognizes init and its existing selectors", () => {
-  const parsed = parseArguments(["init", "--config", "/tmp/pragman", "--project-root", "/tmp/project"]);
+test("argument grammar recognizes init and its profile input selector", () => {
+  const parsed = parseArguments(["init", "--config", "/tmp/pragman", "--project-root", "/tmp/project", "--file", "/tmp/profile.json"]);
   assert.equal(parsed.command, "init");
   assert.equal(parsed.config, "/tmp/pragman");
   assert.equal(parsed.projectRoot, "/tmp/project");
+  assert.equal(parsed.file, "/tmp/profile.json");
+});
+
+test("init previews and atomically applies config plus a schema-validated profile from an explicit file", async () => {
+  const { home, config, root } = await fixture();
+  const input = join(root, "profile.json");
+  await writeFile(input, JSON.stringify({
+    schema_version: 1,
+    profile_id: "founder-cto",
+    roles: ["Founder", "CTO"],
+    responsibilities: ["Product", "Engineering"],
+    preferences: { collaboration: "concise" },
+    prohibitions: ["publish-without-approval"],
+    authority: ["local-code-changes"],
+  }));
+
+  const preview = invoke(home, ["init", "--config", config, "--file", input, "--non-interactive"]);
+  assert.equal(preview.status, 0, preview.stderr);
+  const previewData = JSON.parse(preview.stdout).data;
+  assert.match(previewData.preview_digest, /^[a-f0-9]{64}$/);
+  assert.deepEqual(previewData.proposed_changes.map((change: { target_alias: string; action: string }) => [change.target_alias, change.action]), [
+    ["personal-config", "create"],
+    ["personal-profile", "create"],
+  ]);
+  assert.deepEqual(previewData.interview.questions, []);
+  assert.equal(preview.stdout.includes("Product"), false);
+  assert.equal(preview.stdout.includes(input), false);
+  await assert.rejects(readFile(join(config, "config.yaml")));
+  await assert.rejects(readFile(join(config, "profile.yaml")));
+
+  const applied = invoke(home, ["init", "--config", config, "--file", input, "--non-interactive", "--apply", previewData.preview_digest]);
+  assert.equal(applied.status, 0, applied.stderr);
+  assert.match(await readFile(join(config, "config.yaml"), "utf8"), /default_lane: adaptive/);
+  const profile = await readFile(join(config, "profile.yaml"), "utf8");
+  assert.match(profile, /profile_id: founder-cto/);
+  assert.match(profile, /publish-without-approval/);
+});
+
+test("init reconfigures only the profile, suppresses answered questions, and rejects a stale profile preview", async () => {
+  const { home, config, root } = await fixture();
+  const configDocument = "schema_version: 1\nprivacy:\n  default_sensitivity: internal\nupdates:\n  channel: stable\noutput:\n  format: human\n";
+  await writeFile(join(config, "config.yaml"), configDocument);
+  await writeFile(join(config, "profile.yaml"), "schema_version: 1\nprofile_id: builder\nroles:\n  - Engineer\nresponsibilities:\n  - Delivery\n");
+  const input = join(root, "profile.json");
+  const nextProfile = {
+    schema_version: 1,
+    profile_id: "builder",
+    roles: ["Engineering leader"],
+    responsibilities: ["Delivery", "Planning"],
+  };
+  await writeFile(input, JSON.stringify(nextProfile));
+
+  const preview = invoke(home, ["init", "--config", config, "--file", input, "--non-interactive"]);
+  assert.equal(preview.status, 0, preview.stderr);
+  const data = JSON.parse(preview.stdout).data;
+  assert.deepEqual(data.proposed_changes.map((change: { target_alias: string; action: string }) => [change.target_alias, change.action]), [["personal-profile", "update"]]);
+  assert.deepEqual(data.interview.questions.map((question: { id: string }) => question.id), ["approval-boundaries"]);
+
+  await writeFile(join(config, "profile.yaml"), "schema_version: 1\nprofile_id: builder\nroles:\n  - Changed elsewhere\nresponsibilities:\n  - Delivery\n");
+  const stale = invoke(home, ["init", "--config", config, "--file", input, "--non-interactive", "--apply", data.preview_digest]);
+  assert.equal(stale.status, 5, stale.stderr);
+  assert.equal(JSON.parse(stale.stdout).error.code, "STALE_PREVIEW");
+  assert.equal(await readFile(join(config, "config.yaml"), "utf8"), configDocument);
+  assert.match(await readFile(join(config, "profile.yaml"), "utf8"), /Changed elsewhere/);
+});
+
+test("invalid or unsafe profile input writes nothing and never echoes sensitive content", async () => {
+  const { home, config, root } = await fixture();
+  const input = join(root, "profile.json");
+  const secret = "api_key=super-secret-value-123456";
+  await writeFile(input, JSON.stringify({
+    schema_version: 1,
+    profile_id: "founder",
+    roles: ["Founder"],
+    responsibilities: [secret],
+  }));
+  const result = invoke(home, ["init", "--config", config, "--file", input, "--non-interactive"]);
+  assert.equal(result.status, 5, result.stderr);
+  assert.equal(JSON.parse(result.stdout).error.code, "PRIVACY_DENIED");
+  assert.equal(result.stdout.includes(secret), false);
+  await assert.rejects(readFile(join(config, "config.yaml")));
+  await assert.rejects(readFile(join(config, "profile.yaml")));
+});
+
+test("profile privacy validation catches secrets stored under sensitive preference keys", async () => {
+  const { home, config, root } = await fixture();
+  const input = join(root, "profile.json");
+  const secret = "super-secret-value-123456";
+  await writeFile(input, JSON.stringify({
+    schema_version: 1,
+    profile_id: "founder",
+    roles: ["Founder"],
+    responsibilities: ["Product"],
+    preferences: { api_key: secret },
+  }));
+
+  const result = invoke(home, ["init", "--config", config, "--file", input, "--non-interactive"]);
+  assert.equal(result.status, 5, result.stderr);
+  assert.equal(JSON.parse(result.stdout).error.code, "PRIVACY_DENIED");
+  assert.equal(result.stdout.includes(secret), false);
+  await assert.rejects(readFile(join(config, "profile.yaml")));
+});
+
+test("an unsafe profile target blocks the whole init transaction before config creation", async () => {
+  const { home, config, root } = await fixture();
+  const input = join(root, "profile.json");
+  const outside = join(root, "outside-profile.yaml");
+  const outsideDocument = "schema_version: 1\nprofile_id: founder\nroles:\n  - Existing founder\nresponsibilities:\n  - Existing product\n";
+  await writeFile(outside, outsideDocument);
+  await symlink(outside, join(config, "profile.yaml"));
+  await writeFile(input, JSON.stringify({
+    schema_version: 1,
+    profile_id: "founder",
+    roles: ["Founder"],
+    responsibilities: ["Product"],
+  }));
+
+  const preview = invoke(home, ["init", "--config", config, "--file", input, "--non-interactive"]);
+  assert.equal(preview.status, 0, preview.stderr);
+  const digest = JSON.parse(preview.stdout).data.preview_digest;
+  const applied = invoke(home, ["init", "--config", config, "--file", input, "--non-interactive", "--apply", digest]);
+  assert.equal(applied.status, 5, applied.stderr);
+  assert.equal(JSON.parse(applied.stdout).error.code, "PRIVACY_DENIED");
+  await assert.rejects(readFile(join(config, "config.yaml")));
+  assert.equal(await readFile(outside, "utf8"), outsideDocument);
 });
 
 test("clean init uses adaptive defaults and previews before creating personal configuration", async () => {
@@ -98,4 +223,3 @@ test("broken or shadow-conflicted init blocks writes and asks one resolution que
   assert.deepEqual(envelope.error.details.question_ids, ["installation-conflicts"]);
   await assert.rejects(readFile(join(config, "config.yaml")));
 });
-
