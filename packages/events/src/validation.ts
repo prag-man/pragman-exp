@@ -38,6 +38,16 @@ const validateRollup = ajv.compile(rollupSchema) as ValidateFunction<SkillRollup
 const validateCandidate = ajv.compile(candidateSchema) as ValidateFunction<EvalCandidate>;
 const validateApproval = ajv.compile(approvalSchema) as ValidateFunction<EvalCandidateApproval>;
 
+export const USER_RATING_GRADER_ID = "user-rating";
+export const USER_RATING_GRADER_VERSION = "1.0.0";
+export const USER_RATING_RUBRIC = Object.freeze({
+  schema_version: 1,
+  rubric_id: "user-rating",
+  version: USER_RATING_GRADER_VERSION,
+  method: "explicit-user-rating",
+} as const);
+export const USER_RATING_RUBRIC_DIGEST = sha256Digest(USER_RATING_RUBRIC);
+
 function schemaResult<T>(validator: ValidateFunction<T>, value: unknown): ValidationResult<T> {
   return validator(value) ? { ok: true, value } : { ok: false, code: "SCHEMA_INVALID" };
 }
@@ -87,12 +97,56 @@ function hasValidMetricSemantics(metric: SkillMetric): boolean {
   const categories = metric.categories ?? [];
   const identifiers = new Set(categories.map((category) => category.id));
   const ranks = new Set(categories.map((category) => category.rank));
-  return metric.direction !== "target"
-    && identifiers.size === categories.length
-    && ranks.size === categories.length
-    && metric.pass_rule.operator === "eq"
-    && typeof metric.pass_rule.value === "string"
-    && identifiers.has(metric.pass_rule.value);
+  if (identifiers.size !== categories.length || ranks.size !== categories.length) return false;
+
+  const ordered = [...categories].sort((left, right) => left.rank - right.rank);
+  const utilitiesAreOrdered = metric.direction === "target" || ordered.every((category, index) => {
+    const previous = ordered[index - 1];
+    if (!previous) return true;
+    return metric.direction === "maximize"
+      ? previous.utility <= category.utility
+      : previous.utility >= category.utility;
+  });
+  if (!utilitiesAreOrdered) return false;
+
+  const rule = metric.pass_rule;
+  const minimumRank = ordered[0]?.rank;
+  const maximumRank = ordered.at(-1)?.rank;
+  let ruleIsInDomain = false;
+  if (rule.operator === "eq") {
+    ruleIsInDomain = typeof rule.value === "string"
+      ? identifiers.has(rule.value)
+      : typeof rule.value === "number" && ranks.has(rule.value);
+  } else if (rule.operator === "between") {
+    ruleIsInDomain = Number.isInteger(rule.min)
+      && Number.isInteger(rule.max)
+      && minimumRank !== undefined
+      && maximumRank !== undefined
+      && minimumRank <= rule.min
+      && rule.min <= rule.max
+      && rule.max <= maximumRank;
+  } else {
+    ruleIsInDomain = Number.isInteger(rule.value)
+      && minimumRank !== undefined
+      && maximumRank !== undefined
+      && minimumRank <= rule.value
+      && rule.value <= maximumRank;
+  }
+  if (!ruleIsInDomain) return false;
+
+  const categoryPasses = (category: NonNullable<SkillMetric["categories"]>[number]): boolean => {
+    if (rule.operator === "eq") {
+      return typeof rule.value === "string" ? category.id === rule.value : category.rank === rule.value;
+    }
+    if (rule.operator === "gte") return category.rank >= rule.value;
+    if (rule.operator === "lte") return category.rank <= rule.value;
+    if (rule.operator === "between") return category.rank >= rule.min && category.rank <= rule.max;
+    return false;
+  };
+
+  return categories.every((category) => category.passing === categoryPasses(category))
+    && metric.target === undefined
+    && metric.target_range === undefined;
 }
 
 function metricResult(value: unknown): ValidationResult<SkillMetric> {
@@ -143,6 +197,15 @@ export function createEventValidators(metricDefinitions: readonly unknown[] = []
       if (!scoreIsInDomain(scoreResult.value, metric)) return { ok: false, code: "SCORE_OUTSIDE_METRIC_DOMAIN" };
       if (scoreResult.value.source === "deterministic" && scoreResult.value.rubric_digest !== definitionDigest) {
         return { ok: false, code: "DETERMINISTIC_RUBRIC_DIGEST_MISMATCH" };
+      }
+      if (scoreResult.value.source === "user") {
+        if (scoreResult.value.grader_id !== USER_RATING_GRADER_ID
+          || scoreResult.value.grader_version !== USER_RATING_GRADER_VERSION) {
+          return { ok: false, code: "USER_RATING_GRADER_MISMATCH" };
+        }
+        if (scoreResult.value.rubric_digest !== USER_RATING_RUBRIC_DIGEST) {
+          return { ok: false, code: "USER_RATING_RUBRIC_DIGEST_MISMATCH" };
+        }
       }
       return scoreResult;
     },
