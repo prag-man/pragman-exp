@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Verify annotated release tag
+        run: |
+          git cat-file -e "${GITHUB_REF_NAME}^{tag}"
+      - name: Install trusted-publishing npm CLI
+        run: |
+          npm install --global npm@11.5.1
+          test "$(npm --version)" = "11.5.1"
+      - run: npm ci
+      - name: Match stable package version to tag
+        run: |
+          node --input-type=module <<'NODE'
+          import manifest from "./package.json" with { type: "json" };
+          if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) throw new Error("Release tags require a stable package version");
+          if (process.env.GITHUB_REF_NAME !== `v${manifest.version}`) throw new Error("Tag and package version do not match");
+          NODE
+      - run: npm test
+      - run: npm run build
+      - run: npm run validate:skills
+      - run: npm run evals
+      - name: Pack and verify the exact artifact
+        id: pack
+        run: |
+          PACK_JSON="$(npm pack --json)"
+          TARBALL="$(node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync(0,"utf8")); process.stdout.write(value[0].filename)' <<<"$PACK_JSON")"
+          node scripts/verify-package.mjs "$TARBALL"
+          sha256sum "$TARBALL" > checksums-sha256.txt
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+      - name: Publish with npm trusted publishing
+        run: npm publish "${{ steps.pack.outputs.tarball }}" --access public --provenance
+      - name: Create checksummed GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "${{ steps.pack.outputs.tarball }}" checksums-sha256.txt --verify-tag --generate-notes
