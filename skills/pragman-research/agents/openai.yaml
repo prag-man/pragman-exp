@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pragman Research"
+  short_description: "Research the decision, then recommend action"
+  default_prompt: "Use $pragman-research to gather the minimum strong evidence needed for this decision."

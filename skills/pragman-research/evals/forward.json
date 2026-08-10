@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-research",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-on",
+  "privacy": "sanitized",
+  "scenarios": [
+    {"scenario_id":"quick","passed":true,"invariants":["Decision and exit threshold first","Lightest sufficient method","Fresh credible starting sources","Actionable next step"]},
+    {"scenario_id":"technical-source-first","passed":true,"invariants":["Official or primary sources prioritized","Version and retrieval date explicit","Fact and inference separated","Implementation consequence stated"]},
+    {"scenario_id":"fanout","passed":true,"invariants":["Only independent lanes parallelized","Shared evidence schema","Duplicates and disagreements reconciled","One synthesis"]},
+    {"scenario_id":"decision","passed":true,"invariants":["Explicit criteria and trade-offs","Switching and reversal costs included","Recommendation tied to evidence","Change conditions stated"]},
+    {"scenario_id":"internal","passed":true,"invariants":["Approved source aliases only","No undeclared egress","Internal and public evidence distinguished","Sensitive bodies omitted"]}
+  ]
+}

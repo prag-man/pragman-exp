@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-research",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-off",
+  "privacy": "sanitized",
+  "scenarios": [
+    {"scenario_id":"quick","prompt":"Quickly establish whether this category is worth deeper research.","observed_failures":["Performed exhaustive research","Did not define an exit condition","Returned links without a decision"]},
+    {"scenario_id":"technical-source-first","prompt":"Determine the correct current behavior of a software API.","observed_failures":["Relied on secondary tutorials","Ignored version freshness","Mixed inference with documented behavior"]},
+    {"scenario_id":"fanout","prompt":"Research independent market, technical, and operational questions in parallel.","observed_failures":["Parallelized dependent questions","Used inconsistent evidence formats","Did not reconcile conflicting conclusions"]},
+    {"scenario_id":"decision","prompt":"Choose between two realistic infrastructure options.","observed_failures":["Compared feature lists without criteria","Ignored switching cost","Hid uncertainty behind a generic recommendation"]},
+    {"scenario_id":"internal","prompt":"Research our private workspace context and combine it with current public evidence.","observed_failures":["Crossed workspace boundaries","Sent private material to an external provider","Did not distinguish internal facts from public claims"]}
+  ]
+}
