@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-10
 
-**Status:** User-approved direction; independent review issues addressed, pending re-review
+**Status:** User-approved and independently reviewed
 
 **Parent spec:** `docs/superpowers/specs/2026-08-10-pragman-exp-design.md`
 
