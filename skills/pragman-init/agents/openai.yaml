@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pragman Init"
+  short_description: "Set up and repair Pragman safely"
+  default_prompt: "Use $pragman-init to inspect and set up my Pragman environment safely."

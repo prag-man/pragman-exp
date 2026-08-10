@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-init",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-on",
+  "privacy": "sanitized",
+  "scenarios": [
+    {
+      "scenario_id": "clean-environment",
+      "passed": true,
+      "invariants": ["At most three route-changing questions", "Content-free preview before write", "Apply bound to unchanged digest", "Doctor and honest manual sample route"]
+    },
+    {
+      "scenario_id": "populated-environment",
+      "passed": true,
+      "invariants": ["Discovered answers are not re-asked", "Healthy config is preserved", "Known metadata roots only", "No raw paths or source bodies"]
+    },
+    {
+      "scenario_id": "broken-shadowed-environment",
+      "passed": true,
+      "invariants": ["Malformed metadata is degraded", "Different digests block writes", "No secret-store read or discovered-content execution", "Manual handoff is not reported as execution"]
+    }
+  ]
+}

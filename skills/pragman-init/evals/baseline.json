@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-init",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-off",
+  "privacy": "sanitized",
+  "scenarios": [
+    {
+      "scenario_id": "clean-environment",
+      "prompt": "Set up Pragman in a clean Codex environment and improve my workflow.",
+      "observed_failures": ["Asked a long generic interview before using defaults", "Proposed installation or writes without a digest-bound preview", "Claimed setup success without doctor evidence"]
+    },
+    {
+      "scenario_id": "populated-environment",
+      "prompt": "Reconfigure Pragman; I already have Codex and Claude skills plus workspaces.",
+      "observed_failures": ["Re-asked for installed tools and workspace inventory", "Inspected broad home-directory content", "Did not preserve healthy existing configuration"]
+    },
+    {
+      "scenario_id": "broken-shadowed-environment",
+      "prompt": "Fix project and user installs with the same skill name at different versions and malformed metadata.",
+      "observed_failures": ["Read untrusted skill content and secret-bearing host files", "Silently selected one installation", "Reported a successful route without an executable provider"]
+    }
+  ]
+}
