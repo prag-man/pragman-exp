@@ -132,6 +132,7 @@ export interface TaskContract {
   unresolved_conflicts: string[];
   capabilities: string[];
   providers: string[];
+  provider_assignments: Array<{ provider_id: string; capabilities: string[] }>;
   provider_sequence_policy: "stop" | "continue-independent" | "fallback";
   allowed_side_effects: SideEffect[];
   data_inputs: RouteInput["data_inputs"];

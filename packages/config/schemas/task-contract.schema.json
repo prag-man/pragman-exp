@@ -4,7 +4,7 @@
   "title": "Pragman immutable task contract",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "route_id", "parent_route_id", "request_digest", "outcome", "lane", "deliverable_kind", "execution_mode", "workspace", "project", "in_scope", "out_of_scope", "assumptions", "unresolved_conflicts", "capabilities", "providers", "provider_sequence_policy", "allowed_side_effects", "data_inputs", "effective_sensitivity", "egress_approvals", "proof", "stop_conditions", "created_at"],
+  "required": ["schema_version", "route_id", "parent_route_id", "request_digest", "outcome", "lane", "deliverable_kind", "execution_mode", "workspace", "project", "in_scope", "out_of_scope", "assumptions", "unresolved_conflicts", "capabilities", "providers", "provider_assignments", "provider_sequence_policy", "allowed_side_effects", "data_inputs", "effective_sensitivity", "egress_approvals", "proof", "stop_conditions", "created_at"],
   "properties": {
     "schema_version": { "const": 1 },
     "route_id": { "$ref": "#/$defs/uuidv7" },
@@ -22,6 +22,11 @@
     "unresolved_conflicts": { "$ref": "#/$defs/stringArray", "default": [] },
     "capabilities": { "$ref": "#/$defs/capabilityIdArray", "$comment": "merge: ordered-set", "default": [] },
     "providers": { "$ref": "#/$defs/providerIdArray", "default": [] },
+    "provider_assignments": {
+      "type": "array",
+      "default": [],
+      "items": { "$ref": "#/$defs/providerAssignment" }
+    },
     "provider_sequence_policy": { "enum": ["stop", "continue-independent", "fallback"], "default": "stop" },
     "allowed_side_effects": { "type": "array", "uniqueItems": true, "default": [], "items": { "$ref": "#/$defs/sideEffect" } },
     "data_inputs": { "type": "array", "default": [], "items": { "$ref": "#/$defs/dataInput" } },
@@ -40,6 +45,15 @@
     "providerId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$" },
     "capabilityIdArray": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
     "providerIdArray": { "type": "array", "items": { "$ref": "#/$defs/providerId" }, "uniqueItems": true },
+    "providerAssignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_id", "capabilities"],
+      "properties": {
+        "provider_id": { "$ref": "#/$defs/providerId" },
+        "capabilities": { "$ref": "#/$defs/capabilityIdArray" }
+      }
+    },
     "sideEffect": { "enum": ["project-file-write", "workspace-file-write", "credential-use", "destructive-action", "paid-external-action", "production-data-write", "external-message", "issue-write", "pull-request-write", "purchase", "external-account-mutation", "deployment", "live-data-write"] },
     "dataInput": {
       "type": "object", "additionalProperties": false,
