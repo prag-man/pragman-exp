@@ -148,13 +148,17 @@ async function selectedConfiguration(arguments_: CliArguments, input: RouteInput
   }
   if (input.project && !arguments_.projectRoot) return null;
   const workspaceId = input.workspace ?? arguments_.workspace;
-  if (!arguments_.projectRoot && !workspaceId) return null;
   const personalRoot = normalizeAbsolutePath(arguments_.config ?? join(homedir(), ".pragman"));
-  return loadConfigurationContext({
-    personalRoot,
-    ...(workspaceId ? { workspaceId } : {}),
-    ...(arguments_.projectRoot ? { projectRoot: arguments_.projectRoot } : {}),
-  });
+  try {
+    return await loadConfigurationContext({
+      personalRoot,
+      ...(workspaceId ? { workspaceId } : {}),
+      ...(arguments_.projectRoot ? { projectRoot: arguments_.projectRoot } : {}),
+    });
+  } catch (error) {
+    if (error instanceof ConfigError && error.code === "NOT_FOUND" && !workspaceId && !arguments_.projectRoot) return null;
+    throw error;
+  }
 }
 
 export async function resolveRouteContext(arguments_: CliArguments, input: RouteInput): Promise<RouteContextResolution> {

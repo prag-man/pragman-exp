@@ -75,6 +75,17 @@ output:
   format: json
 `;
 
+test("personal-only routing honors the configured default lane", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pragman-route-personal-"));
+  const config = join(root, "config");
+  const providers = await providerDirectory(root);
+  await writeYaml(join(config, "config.yaml"), `${personal}routing:\n  default_lane: deep\n`);
+
+  const routed = invoke(["route", "--config", config], routeInput(), providers);
+  assert.equal(routed.status, 0, `${routed.stderr}\n${routed.stdout}`);
+  assert.equal(JSON.parse(routed.stdout).data.contract.lane, "deep");
+});
+
 function workspace(id: string, root: string, sensitivity = "internal"): string {
   return `schema_version: 1
 workspace_id: ${id}
