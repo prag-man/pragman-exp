@@ -2,6 +2,9 @@
 
 import { parseArguments } from "./args.ts";
 import { errorEnvelope, EXIT_CODES, successEnvelope } from "./envelope.ts";
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const VERSION = "0.1.0";
 
@@ -46,6 +49,17 @@ export function run(argv: readonly string[]): number {
   return EXIT_CODES.success;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+export function isMainModule(moduleUrl: string, entryPath: string | undefined): boolean {
+  if (!entryPath) return false;
+  try {
+    const normalizedModuleUrl = pathToFileURL(realpathSync(fileURLToPath(moduleUrl))).href;
+    const normalizedEntryUrl = pathToFileURL(realpathSync(resolve(entryPath))).href;
+    return normalizedModuleUrl === normalizedEntryUrl;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) {
   process.exitCode = run(process.argv.slice(2));
 }

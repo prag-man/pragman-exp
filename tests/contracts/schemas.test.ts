@@ -86,6 +86,27 @@ test("routing predicates are structured and reject free text or unknown action k
     ...routing,
     rules: [{ ...routing.rules[0], action: { invoke: "provider-a" } }],
   }), false);
+
+  const withCondition = (condition: unknown) => ({
+    ...routing,
+    rules: [{ ...routing.rules[0], when: { all: [condition] } }],
+  });
+  assert.equal(validate(withCondition({ field: "task_family", op: "eq", value: 42 })), false);
+  assert.equal(validate(withCondition({ field: "effective_sensitivity", op: "eq", value: "secret" })), false);
+  assert.equal(validate(withCondition({ field: "independent_system_count", op: "gte", value: "2" })), false);
+  assert.equal(validate(withCondition({ field: "workspace", op: "is_null", value: null })), false);
+
+  assert.equal(validate({
+    ...routing,
+    rules: [{
+      ...routing.rules[0],
+      action: { require_capabilities: ["code-review"], prefer: ["gstack:investigate"] },
+    }],
+  }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({
+    ...routing,
+    rules: [{ ...routing.rules[0], action: { require_capabilities: ["gstack:investigate"] } }],
+  }), false);
 });
 
 test("provider, task, evidence, session, learning, and change schemas enforce key trust boundaries", async () => {
@@ -114,6 +135,11 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
     result_contract: "provider-result",
   };
   assert.equal(ajv.compile(schemas["provider.schema.json"])(provider), true);
+  assert.equal(ajv.compile(schemas["provider.schema.json"])({
+    ...provider,
+    id: "gstack:investigate",
+    source: "obra/gstack",
+  }), true);
   assert.equal(
     ajv.compile(schemas["provider.schema.json"])({
       ...provider,
@@ -150,6 +176,8 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
   };
   const validateContract = ajv.compile(schemas["task-contract.schema.json"]);
   assert.equal(validateContract(contract), true, JSON.stringify(validateContract.errors));
+  assert.equal(validateContract({ ...contract, providers: ["gstack:investigate"] }), true);
+  assert.equal(validateContract({ ...contract, capabilities: ["gstack:investigate"] }), false);
   assert.equal(validateContract({ ...contract, raw_private_path: "/Users/example/private" }), false);
 
   const validateSession = ajv.compile(schemas["session-event.schema.json"]);
@@ -175,6 +203,51 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
     assert.equal(schema.additionalProperties, false, file);
     assert.ok(schema.required.includes("schema_version"), file);
   }
+});
+
+test("every normative date-time requires RFC 3339 UTC with a trailing Z", async () => {
+  const [{ default: Ajv2020 }, { default: addFormats }] = await Promise.all([
+    import("ajv/dist/2020.js"),
+    import("ajv-formats"),
+  ]);
+  const schemas = Object.fromEntries(await loadSchemas());
+  const ajv = new Ajv2020({ strict: true });
+  addFormats(ajv);
+
+  function assertUtcPatterns(value: unknown, location: string): void {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => assertUtcPatterns(item, `${location}/${index}`));
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const record = value as Record<string, unknown>;
+    if (record.format === "date-time") {
+      assert.equal(record.pattern, "Z$", location);
+    }
+    for (const [key, child] of Object.entries(record)) {
+      assertUtcPatterns(child, `${location}/${key}`);
+    }
+  }
+
+  for (const [file, schema] of Object.entries(schemas)) {
+    assertUtcPatterns(schema, file);
+  }
+
+  const validateSession = ajv.compile(schemas["session-event.schema.json"]);
+  const baseEvent = {
+    schema_version: 1,
+    event_id: "event-hash",
+    session_id: "session-1",
+    source: "codex",
+    source_version: "1",
+    source_alias: "codex-session-1",
+    sequence: 1,
+    timestamp: "2026-08-10T12:00:00+05:30",
+    event_type: "session-start",
+    sensitivity: "internal",
+    provenance: { source_alias: "codex-session-1" },
+  };
+  assert.equal(validateSession(baseEvent), false);
 });
 
 test("skill events capture privacy-safe local metrics and reject raw content or secrets", async () => {

@@ -1,6 +1,6 @@
 const REDACTIONS: ReadonlyArray<readonly [RegExp, string | ((substring: string, ...args: string[]) => string)]> = [
   [
-    /-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----/gi,
+    /-----BEGIN (?:RSA |EC |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----/gi,
     "[REDACTED:PRIVATE_KEY]",
   ],
   [

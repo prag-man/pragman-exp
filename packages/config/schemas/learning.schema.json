@@ -11,9 +11,9 @@
     "evidence_refs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
     "target": { "enum": ["personal", "workspace", "project"] },
     "change_id": { "$ref": "#/$defs/uuidv7" },
-    "approved_at": { "type": "string", "format": "date-time" },
+    "approved_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
     "status": { "enum": ["approved", "applied", "rolled-back", "expired"] },
-    "review_after": { "type": "string", "format": "date-time" },
+    "review_after": { "type": "string", "format": "date-time", "pattern": "Z$" },
     "outcome": { "enum": ["succeeded", "partial", "failed", "rolled-back"] },
     "rollback_reason": { "type": "string", "minLength": 1 }
   },

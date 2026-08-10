@@ -9,8 +9,8 @@
   "properties": {
     "schema_version": { "const": 1 },
     "event_id": { "$ref": "#/$defs/uuidv7" },
-    "timestamp": { "type": "string", "format": "date-time" },
-    "skill_id": { "$ref": "#/$defs/slug" },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "skill_id": { "$ref": "#/$defs/namespacedId" },
     "skill_version": { "type": "string", "minLength": 1 },
     "skill_digest": { "$ref": "#/$defs/sha256" },
     "skill_type": { "enum": ["capability", "preference"] },
@@ -36,7 +36,7 @@
     "rework_cycles": { "type": "integer", "minimum": 0 },
     "verification_checks": { "type": "integer", "minimum": 0 },
     "verification_passes": { "type": "integer", "minimum": 0 },
-    "provider": { "$ref": "#/$defs/slug" },
+    "provider": { "$ref": "#/$defs/namespacedId" },
     "ablation_arm": { "enum": ["skill-on", "skill-off", "production"] },
     "source_aliases": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/alias" } },
     "storage_scope": { "const": "local" },
@@ -44,6 +44,7 @@
   },
   "$defs": {
     "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "namespacedId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" },
     "alias": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
     "uuidv7": { "type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
     "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }

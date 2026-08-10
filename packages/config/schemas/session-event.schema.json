@@ -13,7 +13,7 @@
     "source_version": { "type": "string", "minLength": 1 },
     "source_alias": { "$ref": "#/$defs/alias" },
     "sequence": { "type": "integer", "minimum": 0 },
-    "timestamp": { "type": "string", "format": "date-time" },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
     "event_type": { "enum": ["session-start", "session-end", "user-message", "assistant-message", "tool-start", "tool-end", "tool-error", "approval", "compaction", "interruption", "handoff", "task-boundary", "unsupported"] },
     "sensitivity": { "$ref": "#/$defs/sensitivity" },
     "provenance": { "$ref": "#/$defs/provenance" },
@@ -49,7 +49,7 @@
         "source_alias": { "$ref": "#/$defs/alias" },
         "source_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "locator": { "type": "string" },
-        "observed_at": { "type": "string", "format": "date-time" },
+        "observed_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
         "inferred_task": { "type": "boolean", "default": false }
       }
     }
