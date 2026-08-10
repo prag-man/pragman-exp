@@ -23,6 +23,14 @@ async function loadJson(url: URL) {
   return JSON.parse(await readFile(url, "utf8")) as unknown;
 }
 
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object") {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
 const validMetric: SkillMetric = {
   schema_version: 1,
   metric_id: "task-success",
@@ -474,7 +482,7 @@ test("boolean utility ordering follows direction and the passing value", () => {
   })).ok, false);
 });
 
-test("rollup cross-field totals reject impossible periods, subsets, and utility sums", () => {
+test("rollup periods must have strictly positive duration", () => {
   const validators = createEventValidators([validMetric]);
   const rollup = validRollup();
 
@@ -483,7 +491,29 @@ test("rollup cross-field totals reject impossible periods, subsets, and utility 
     period_start: "2026-08-12T00:00:00Z",
     period_end: "2026-08-11T00:00:00Z",
   }), { ok: false, code: "ROLLUP_PERIOD_INVALID" });
-  assert.equal(validators.rollup({ ...rollup, period_end: rollup.period_start }).ok, true);
+  assert.deepEqual(validators.rollup({ ...rollup, period_end: rollup.period_start }), {
+    ok: false,
+    code: "ROLLUP_PERIOD_INVALID",
+  });
+});
+
+test("rollup verification can follow completed or cancelled execution", () => {
+  const validators = createEventValidators([validMetric]);
+  const rollup = validRollup();
+  assert.equal(validators.rollup({
+    ...rollup,
+    counts: { ...rollup.counts, completed: 0, cancelled: 1, verified: 1 },
+  }).ok, true);
+  assert.deepEqual(validators.rollup({
+    ...rollup,
+    counts: { ...rollup.counts, completed: 0, cancelled: 1, verified: 2 },
+    source_record_count: 5,
+  }), { ok: false, code: "ROLLUP_COUNT_RELATION_INVALID" });
+});
+
+test("rollup cross-field totals reject impossible subsets and utility sums", () => {
+  const validators = createEventValidators([validMetric]);
+  const rollup = validRollup();
 
   const invalidCounts = [
     { ...rollup.counts, completed: 2 },
@@ -538,7 +568,7 @@ test("canonical serialization and metric digests are stable across key order", (
   assert.throws(() => canonicalJson(accessor), TypeError);
 });
 
-test("canonical arrays reject getters without executing them and reject non-ordinary indices", () => {
+test("canonical arrays accept frozen data while rejecting getters, holes, and extra indices", () => {
   let getterReads = 0;
   const getterArray = [0];
   Object.defineProperty(getterArray, "0", {
@@ -552,15 +582,43 @@ test("canonical arrays reject getters without executing them and reject non-ordi
   assert.throws(() => canonicalJson(getterArray), TypeError);
   assert.equal(getterReads, 0);
 
-  for (const descriptor of [
-    { configurable: true, enumerable: true, writable: false },
-    { configurable: true, enumerable: false, writable: true },
-    { configurable: false, enumerable: true, writable: true },
-  ]) {
-    const nonOrdinary = [1];
-    Object.defineProperty(nonOrdinary, "0", { ...descriptor, value: 1 });
-    assert.throws(() => canonicalJson(nonOrdinary), TypeError);
-  }
+  assert.equal(canonicalJson(Object.freeze([1, 2])), "[1,2]");
+  const nonWritable = [1];
+  Object.defineProperty(nonWritable, "0", { configurable: true, enumerable: true, writable: false, value: 1 });
+  assert.equal(canonicalJson(nonWritable), "[1]");
+  const nonConfigurable = [1];
+  Object.defineProperty(nonConfigurable, "0", { configurable: false, enumerable: true, writable: true, value: 1 });
+  assert.equal(canonicalJson(nonConfigurable), "[1]");
+
+  const nonEnumerable = [1];
+  Object.defineProperty(nonEnumerable, "0", { configurable: true, enumerable: false, writable: true, value: 1 });
+  assert.throws(() => canonicalJson(nonEnumerable), TypeError);
+  const hole = new Array(1);
+  assert.throws(() => canonicalJson(hole), TypeError);
+  const extraProperty = [1] as number[] & { extra?: number };
+  extraProperty.extra = 2;
+  assert.throws(() => canonicalJson(extraProperty), TypeError);
+
+  let inheritedGetterReads = 0;
+  const inheritedPrototype = Object.create(Array.prototype) as unknown[];
+  Object.defineProperty(inheritedPrototype, "0", {
+    configurable: true,
+    get() {
+      inheritedGetterReads += 1;
+      return 1;
+    },
+  });
+  const inheritedIndex = new Array(1);
+  Object.setPrototypeOf(inheritedIndex, inheritedPrototype);
+  assert.throws(() => canonicalJson(inheritedIndex), TypeError);
+  assert.equal(inheritedGetterReads, 0);
+});
+
+test("deeply frozen metric definitions remain valid registry inputs", () => {
+  const frozenMetric = deepFreeze(JSON.parse(JSON.stringify(validMetric)) as SkillMetric);
+  const validators = createEventValidators([frozenMetric]);
+  assert.equal(validators.metric(frozenMetric).ok, true);
+  assert.equal(sha256Digest(frozenMetric), sha256Digest(validMetric));
 });
 
 test("validators never coerce, strip, or mutate input", () => {

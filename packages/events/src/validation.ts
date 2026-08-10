@@ -188,7 +188,7 @@ function rollupResult(value: unknown): ValidationResult<SkillRollup> {
   const result = schemaResult(validateRollup, value);
   if (!result.ok) return result;
   const rollup = result.value;
-  if (Date.parse(rollup.period_start) > Date.parse(rollup.period_end)) {
+  if (Date.parse(rollup.period_start) >= Date.parse(rollup.period_end)) {
     return { ok: false, code: "ROLLUP_PERIOD_INVALID" };
   }
 
@@ -204,7 +204,7 @@ function rollupResult(value: unknown): ValidationResult<SkillRollup> {
   const histogramExceedsSources = Object.values(rollup.histograms)
     .some((histogram) => histogram.reduce((total, count) => total + count, 0) > rollup.source_record_count);
   if (terminalOrIncomplete > rollup.counts.invoked
-    || rollup.counts.verified > rollup.counts.completed
+    || rollup.counts.verified > rollup.counts.completed + rollup.counts.cancelled
     || rollup.score_aggregate.pass_count > rollup.score_aggregate.count
     || eventRecordCount + scoreRecordCount > rollup.source_record_count
     || observationCount > rollup.source_record_count
