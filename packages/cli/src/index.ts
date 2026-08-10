@@ -11,6 +11,7 @@ import { executeDoctorCommand } from "./commands/doctor.ts";
 import { executeProvidersCommand } from "./commands/providers.ts";
 import { executeRouteCommand } from "./commands/route.ts";
 import { executeChangesCommand } from "./commands/changes.ts";
+import { executeHistoryPurgeCommand, executeSessionsCommand } from "./commands/sessions.ts";
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -120,6 +121,10 @@ export async function runCli(
                 ? await executeRouteCommand(arguments_, io)
                 : arguments_.command.startsWith("changes.")
                   ? await executeChangesCommand(arguments_, io)
+                  : arguments_.command.startsWith("sessions.")
+                    ? await executeSessionsCommand(arguments_, io)
+                    : arguments_.command === "history.purge"
+                      ? await executeHistoryPurgeCommand(arguments_)
             : await executeEvalCommand(arguments_, io);
   render(result, arguments_.json);
   return result.exitCode;
