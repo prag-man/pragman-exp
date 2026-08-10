@@ -1,5 +1,11 @@
 export { canonicalJson, sha256Digest } from "./canonical.ts";
-export { createEventValidators } from "./validation.ts";
+export {
+  createEventValidators,
+  USER_RATING_GRADER_ID,
+  USER_RATING_GRADER_VERSION,
+  USER_RATING_RUBRIC,
+  USER_RATING_RUBRIC_DIGEST,
+} from "./validation.ts";
 export type {
   BooleanMetricValue,
   CategoryMetricValue,

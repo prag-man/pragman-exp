@@ -46,9 +46,11 @@
     { "if": { "properties": { "value_type": { "const": "boolean" } } }, "then": { "required": ["boolean_values"], "properties": { "boolean_values": {} } } },
     { "if": { "properties": { "value_type": { "const": "category" } } }, "then": { "required": ["categories"], "properties": { "categories": {} } } },
     {
-      "if": { "properties": { "direction": { "const": "target" } } },
+      "if": {
+        "required": ["value_type", "direction"],
+        "properties": { "value_type": { "const": "number" }, "direction": { "const": "target" } }
+      },
       "then": {
-        "properties": { "value_type": { "const": "number" } },
         "oneOf": [
           { "required": ["target"], "properties": { "target": {}, "target_range": false } },
           { "required": ["target_range"], "properties": { "target": false, "target_range": {} } }

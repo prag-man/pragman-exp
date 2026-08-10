@@ -6,6 +6,10 @@ import {
   canonicalJson,
   createEventValidators,
   sha256Digest,
+  USER_RATING_GRADER_ID,
+  USER_RATING_GRADER_VERSION,
+  USER_RATING_RUBRIC,
+  USER_RATING_RUBRIC_DIGEST,
   type SkillEvent,
   type SkillMetric,
   type SkillScore,
@@ -294,6 +298,119 @@ test("score validation enforces definition digest, metric domain, value type, an
   };
   const numberValidators = createEventValidators([numberMetric]);
   assert.deepEqual(numberValidators.score(numberScore, numberMetric), { ok: false, code: "SCORE_OUTSIDE_METRIC_DOMAIN" });
+});
+
+test("user scores require the fixed public user-rating grader and rubric", () => {
+  const validators = createEventValidators([validMetric]);
+  const rubricDigest = sha256Digest({
+    schema_version: 1,
+    rubric_id: "user-rating",
+    version: "1.0.0",
+    method: "explicit-user-rating",
+  });
+  const userScore = {
+    ...validScore(),
+    source: "user",
+    grader_id: "user-rating",
+    grader_version: "1.0.0",
+    rubric_digest: rubricDigest,
+  };
+
+  assert.equal(USER_RATING_GRADER_ID, "user-rating");
+  assert.equal(USER_RATING_GRADER_VERSION, "1.0.0");
+  assert.deepEqual(USER_RATING_RUBRIC, {
+    schema_version: 1,
+    rubric_id: "user-rating",
+    version: "1.0.0",
+    method: "explicit-user-rating",
+  });
+  assert.equal(USER_RATING_RUBRIC_DIGEST, rubricDigest);
+  assert.equal(validators.score(userScore, validMetric).ok, true);
+  assert.deepEqual(validators.score({ ...userScore, grader_id: "custom-user-grader" }, validMetric), {
+    ok: false,
+    code: "USER_RATING_GRADER_MISMATCH",
+  });
+  assert.deepEqual(validators.score({ ...userScore, grader_version: "2.0.0" }, validMetric), {
+    ok: false,
+    code: "USER_RATING_GRADER_MISMATCH",
+  });
+  assert.deepEqual(validators.score({ ...userScore, rubric_digest: digest("7") }, validMetric), {
+    ok: false,
+    code: "USER_RATING_RUBRIC_DIGEST_MISMATCH",
+  });
+});
+
+test("category passing flags and direction utility ordering are semantically consistent", () => {
+  const validators = createEventValidators([validMetric]);
+  const categoryMetric = (overrides: Record<string, unknown> = {}) => ({
+    ...validMetric,
+    metric_id: "review-quality",
+    value_type: "category",
+    boolean_values: undefined,
+    categories: [
+      { id: "poor", rank: 0, passing: false, utility: 0 },
+      { id: "good", rank: 1, passing: true, utility: 1 },
+    ],
+    direction: "maximize",
+    pass_rule: { operator: "eq", value: "good" },
+    ...overrides,
+  });
+  const clean = (value: unknown) => JSON.parse(JSON.stringify(value));
+
+  assert.equal(validators.metric(clean(categoryMetric())).ok, true);
+  assert.equal(validators.metric(clean(categoryMetric({
+    categories: [
+      { id: "poor", rank: 0, passing: true, utility: 0 },
+      { id: "good", rank: 1, passing: false, utility: 1 },
+    ],
+  }))).ok, false);
+  assert.equal(validators.metric(clean(categoryMetric({
+    pass_rule: { operator: "gte", value: 1 },
+    categories: [
+      { id: "poor", rank: 0, passing: false, utility: 0 },
+      { id: "good", rank: 1, passing: true, utility: 0.5 },
+      { id: "excellent", rank: 2, passing: true, utility: 1 },
+    ],
+  }))).ok, true);
+  assert.equal(validators.metric(clean(categoryMetric({
+    direction: "minimize",
+    pass_rule: { operator: "lte", value: 1 },
+    categories: [
+      { id: "low", rank: 0, passing: true, utility: 1 },
+      { id: "medium", rank: 1, passing: true, utility: 0.5 },
+      { id: "high", rank: 2, passing: false, utility: 0 },
+    ],
+  }))).ok, true);
+  assert.equal(validators.metric(clean(categoryMetric({
+    categories: [
+      { id: "poor", rank: 0, passing: false, utility: 1 },
+      { id: "good", rank: 1, passing: true, utility: 0 },
+    ],
+  }))).ok, false);
+  assert.equal(validators.metric(clean(categoryMetric({
+    direction: "minimize",
+    pass_rule: { operator: "eq", value: "poor" },
+    categories: [
+      { id: "poor", rank: 0, passing: true, utility: 0 },
+      { id: "good", rank: 1, passing: false, utility: 1 },
+    ],
+  }))).ok, false);
+  assert.equal(validators.metric(clean(categoryMetric({
+    direction: "target",
+    categories: [
+      { id: "poor", rank: 0, passing: false, utility: 0.4 },
+      { id: "good", rank: 1, passing: true, utility: 1 },
+      { id: "excessive", rank: 2, passing: false, utility: 0.2 },
+    ],
+  }))).ok, true);
+  assert.equal(validators.metric(clean(categoryMetric({
+    direction: "target",
+    categories: [
+      { id: "poor", rank: 0, passing: true, utility: 0.4 },
+      { id: "good", rank: 1, passing: false, utility: 1 },
+      { id: "excessive", rank: 2, passing: false, utility: 0.2 },
+    ],
+  }))).ok, false);
 });
 
 test("canonical serialization and metric digests are stable across key order", () => {
