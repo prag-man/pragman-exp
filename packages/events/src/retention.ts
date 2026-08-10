@@ -20,7 +20,7 @@ export interface RetentionPolicy {
   raw_days: number;
   candidate_days: number;
   quarantine_days: number;
-  daily_rollup_years: number;
+  daily_rollup_days: number;
   plan_ttl_ms: number;
 }
 
@@ -62,22 +62,65 @@ export interface ExplicitPurgePlan extends PlanBase {
 
 export type RetentionPlan = AutomaticRetentionPlan | ExplicitPurgePlan;
 
+export interface AutomaticRetentionWorkPlan {
+  seal_and_verify_days: string[];
+  recompute_week_starts: string[];
+  delete: RetentionRemovalSet;
+}
+
+export interface AutomaticRetentionDebt {
+  unavailable_metric_definition_digests: string[];
+  seal_and_verify_days: string[];
+  recompute_week_starts: string[];
+}
+
+export interface AutomaticRetentionUnderLockDependencies {
+  isMetricDefinitionAvailable?(metricDefinitionDigest: string, metricId: string): boolean;
+  sealAndVerifyDaily(date: string): Promise<boolean>;
+  recomputeWeekly(weekStart: string): Promise<boolean>;
+}
+
+export interface AutomaticRetentionRunOptions {
+  now?: Date;
+  policy?: Partial<RetentionPolicy>;
+}
+
+export type AutomaticRetentionRunResult =
+  | {
+    applied: true;
+    reason: null;
+    plan: AutomaticRetentionPlan;
+    work_plan: AutomaticRetentionWorkPlan;
+    debt: AutomaticRetentionDebt;
+    state: RetentionState;
+    removed: RetentionRemovalSet;
+  }
+  | {
+    applied: false;
+    reason: "RETENTION_DEBT";
+    plan: AutomaticRetentionPlan;
+    work_plan: AutomaticRetentionWorkPlan;
+    debt: AutomaticRetentionDebt;
+    state: RetentionState;
+  };
+
 export interface RetentionApplyDependencies {
   now(): Date;
   withMutationLock<T>(operation: () => Promise<T>): Promise<T>;
+  isMetricDefinitionAvailable?(metricDefinitionDigest: string, metricId: string): boolean;
   sealAndVerifyDaily(date: string): Promise<boolean>;
   recomputeWeekly(weekStart: string): Promise<boolean>;
 }
 
 export type RetentionApplyResult =
   | { applied: true; reason: null; state: RetentionState; removed: RetentionRemovalSet; history_rebuildable: boolean }
-  | { applied: false; reason: "PLAN_DIGEST_INVALID" | "PLAN_EXPIRED" | "STALE_STATE" | "RETENTION_DEBT"; state: RetentionState; debt_days?: string[] };
+  | { applied: false; reason: "PLAN_DIGEST_INVALID" | "PLAN_EXPIRED" | "STALE_STATE" | "RETENTION_DEBT"; state: RetentionState; debt_days?: string[]; debt_metric_definition_digests?: string[] };
 
 export const DEFAULT_RETENTION_POLICY: Readonly<RetentionPolicy> = Object.freeze({
   raw_days: 180,
   candidate_days: 180,
   quarantine_days: 30,
-  daily_rollup_years: 2,
+  daily_rollup_days: 730,
   plan_ttl_ms: 10 * 60 * 1_000,
 });
 
@@ -95,16 +138,26 @@ function subtractDays(now: Date, days: number): number {
   return now.getTime() - days * 24 * 60 * 60 * 1_000;
 }
 
-function subtractYears(now: Date, years: number): number {
-  const cutoff = new Date(now);
-  cutoff.setUTCFullYear(cutoff.getUTCFullYear() - years);
-  return cutoff.getTime();
+function retainedRawDayStart(now: Date, days: number): string {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  return start.toISOString().slice(0, 10);
 }
 
 function mondayFor(date: string): string {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() - ((value.getUTCDay() + 6) % 7));
   return value.toISOString().slice(0, 10);
+}
+
+export function resolveRetentionPolicy(value: Partial<RetentionPolicy> = {}): RetentionPolicy {
+  const policy = { ...DEFAULT_RETENTION_POLICY, ...value };
+  for (const field of ["raw_days", "candidate_days", "quarantine_days", "daily_rollup_days", "plan_ttl_ms"] as const) {
+    if (!Number.isSafeInteger(policy[field]) || policy[field] < 1 || policy[field] > DEFAULT_RETENTION_POLICY[field]) {
+      throw new RangeError(`Retention policy ${field} must shorten its default`);
+    }
+  }
+  return Object.freeze(policy);
 }
 
 function withDigest<T extends Omit<PlanBase, "plan_digest">>(plan: T): T & { plan_digest: string } {
@@ -130,17 +183,19 @@ export function createRetentionPlan(
   policyValue: Partial<RetentionPolicy> = {},
 ): AutomaticRetentionPlan {
   const now = new Date(nowValue);
-  const policy = { ...DEFAULT_RETENTION_POLICY, ...policyValue };
-  const rawCutoff = subtractDays(now, policy.raw_days);
+  const policy = resolveRetentionPolicy(policyValue);
+  const firstRetainedRawDay = retainedRawDayStart(now, policy.raw_days);
   const candidateCutoff = subtractDays(now, policy.candidate_days);
   const invocationAnchors = new Map(state.events
     .filter((event) => event.event_type === "invoked")
     .map((event) => [event.invocation_id, event.timestamp]));
   const expiredInvocationIds = new Set([...invocationAnchors]
-    .filter(([, timestamp]) => beforeOrAt(timestamp, rawCutoff))
+    .filter(([, timestamp]) => timestamp.slice(0, 10) < firstRetainedRawDay)
     .map(([invocationId]) => invocationId));
   const expiredStandaloneEventIds = new Set(state.events
-    .filter((event) => event.event_type === "eligible" && beforeOrAt(event.timestamp, rawCutoff))
+    .filter((event) => event.event_type === "eligible"
+      && !invocationAnchors.has(event.invocation_id)
+      && event.timestamp.slice(0, 10) < firstRetainedRawDay)
     .map((event) => event.event_id));
   const expiredCandidateIds = new Set(state.candidates
     .filter((candidate) => beforeOrAt(candidate.timestamp, candidateCutoff))
@@ -150,7 +205,7 @@ export function createRetentionPlan(
     score_ids: state.scores.filter((score) => expiredInvocationIds.has(score.invocation_id)).map((score) => score.score_id).sort(),
     candidate_ids: [...expiredCandidateIds].sort(),
     approval_ids: state.approvals.filter((approval) => expiredCandidateIds.has(approval.candidate_id)).map((approval) => approval.approval_id).sort(),
-    daily_rollup_ids: state.daily_rollups.filter((rollup) => beforeOrAt(rollup.period_start, subtractYears(now, policy.daily_rollup_years))).map((rollup) => rollup.rollup_id).sort(),
+    daily_rollup_ids: state.daily_rollups.filter((rollup) => beforeOrAt(rollup.period_start, subtractDays(now, policy.daily_rollup_days))).map((rollup) => rollup.rollup_id).sort(),
     weekly_rollup_ids: [],
     quarantine_ids: state.quarantine.filter((record) => beforeOrAt(record.timestamp, subtractDays(now, policy.quarantine_days))).map((record) => record.quarantine_id).sort(),
   };
@@ -226,6 +281,68 @@ function removePlanned(state: RetentionState, remove: RetentionRemovalSet): Rete
   };
 }
 
+function unavailableMetricDefinitionDigests(
+  state: RetentionState,
+  remove: RetentionRemovalSet,
+  isAvailable: AutomaticRetentionUnderLockDependencies["isMetricDefinitionAvailable"],
+): string[] {
+  const removedScoreIds = new Set(remove.score_ids);
+  return [...new Set(state.scores
+    .filter((score) => removedScoreIds.has(score.score_id)
+      && isAvailable?.(score.metric_definition_digest, score.metric_id) !== true)
+    .map((score) => score.metric_definition_digest))].sort();
+}
+
+/**
+ * Runs automatic retention after the caller has acquired the shared state-root
+ * transaction lock and freshly loaded every partition in RetentionState.
+ * This function deliberately does not acquire a lock of its own.
+ */
+export async function runAutomaticRetentionUnderLock(
+  state: RetentionState,
+  dependencies: AutomaticRetentionUnderLockDependencies,
+  options: AutomaticRetentionRunOptions = {},
+): Promise<AutomaticRetentionRunResult> {
+  const plan = createRetentionPlan(state, options.now ?? new Date(), options.policy);
+  const workPlan: AutomaticRetentionWorkPlan = {
+    seal_and_verify_days: [...plan.compact_days],
+    recompute_week_starts: [...plan.affected_weeks],
+    delete: structuredClone(plan.remove),
+  };
+  const debt: AutomaticRetentionDebt = {
+    unavailable_metric_definition_digests: unavailableMetricDefinitionDigests(
+      state,
+      plan.remove,
+      dependencies.isMetricDefinitionAvailable,
+    ),
+    seal_and_verify_days: [],
+    recompute_week_starts: [],
+  };
+  if (debt.unavailable_metric_definition_digests.length > 0) {
+    return { applied: false, reason: "RETENTION_DEBT", plan, work_plan: workPlan, debt, state };
+  }
+  for (const date of workPlan.seal_and_verify_days) {
+    if (!await dependencies.sealAndVerifyDaily(date)) debt.seal_and_verify_days.push(date);
+  }
+  if (debt.seal_and_verify_days.length === 0) {
+    for (const weekStart of workPlan.recompute_week_starts) {
+      if (!await dependencies.recomputeWeekly(weekStart)) debt.recompute_week_starts.push(weekStart);
+    }
+  }
+  if (debt.seal_and_verify_days.length > 0 || debt.recompute_week_starts.length > 0) {
+    return { applied: false, reason: "RETENTION_DEBT", plan, work_plan: workPlan, debt, state };
+  }
+  return {
+    applied: true,
+    reason: null,
+    plan,
+    work_plan: workPlan,
+    debt,
+    state: removePlanned(state, plan.remove),
+    removed: plan.remove,
+  };
+}
+
 export async function applyRetentionPlan(
   plan: RetentionPlan,
   state: RetentionState,
@@ -237,6 +354,19 @@ export async function applyRetentionPlan(
   return dependencies.withMutationLock(async () => {
     if (retentionStateDigest(state) !== plan.current_state_digest) return { applied: false, reason: "STALE_STATE", state };
     if (plan.kind === "automatic-retention") {
+      const unavailableDigests = unavailableMetricDefinitionDigests(
+        state,
+        plan.remove,
+        dependencies.isMetricDefinitionAvailable,
+      );
+      if (unavailableDigests.length > 0) {
+        return {
+          applied: false,
+          reason: "RETENTION_DEBT",
+          state,
+          debt_metric_definition_digests: unavailableDigests,
+        };
+      }
       const debt = [];
       for (const date of plan.compact_days) if (!await dependencies.sealAndVerifyDaily(date)) debt.push(date);
       if (debt.length === 0) {

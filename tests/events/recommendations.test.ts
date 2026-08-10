@@ -17,10 +17,26 @@ function evidence(overrides: Partial<RecommendationEvidence> = {}): Recommendati
     comparable: true, environment_changed: false, current_trials_per_arm: 3, comparable_environments: 2,
     baseline_mean_utility: 0.9, current_mean_utility: 0.9, pass_rate: 0.8, utility_lift: 0.03,
     efficiency_delta: { duration_ms: 0, retries: 0, rework_cycles: 0, tool_calls: 0 },
+    environments: ["c", "d"].map((character) => ({
+      environment_digest: character.repeat(64), comparable: true, trials_per_arm: 3, utility_lift: 0.03,
+      efficiency_delta: { duration_ms: 0, retries: 0, rework_cycles: 0, tool_calls: 0 },
+    })),
     skill_id: "pragman:review", skill_digest: "a".repeat(64), cohort_digest: "b".repeat(64), metric_digest: sha256Digest(metric),
     skill_type: "capability", previously_retired: false, ...overrides,
   };
 }
+
+test("retirement requires non-inferiority and no material efficiency lift in every environment", () => {
+  const result = recommendSkillLifecycle(metric, evidence({
+    utility_lift: 0,
+    environments: [
+      { environment_digest: "c".repeat(64), comparable: true, trials_per_arm: 3, utility_lift: -0.2, efficiency_delta: { duration_ms: 0, retries: 0, rework_cycles: 0, tool_calls: 0 } },
+      { environment_digest: "d".repeat(64), comparable: true, trials_per_arm: 3, utility_lift: 0.2, efficiency_delta: { duration_ms: 0, retries: 0, rework_cycles: 0, tool_calls: 0 } },
+    ],
+  }));
+
+  assert.deepEqual(result, []);
+});
 
 test("recommendations honor exact boundaries and stay immutable advisory records", () => {
   assert.deepEqual(recommendSkillLifecycle(metric, evidence({ current_mean_utility: 0.85 })), []);
@@ -41,9 +57,18 @@ test("drift is the only recommendation allowed for insufficient or incomparable 
 });
 
 test("retire, retain preference, and reactivate use policy materiality and prior state", () => {
-  assert.equal(recommendSkillLifecycle(metric, evidence({ utility_lift: 0.02 }))[0]?.kind, "retire-capability");
+  const retiredEvidence = evidence({
+    utility_lift: 0.02,
+    environments: evidence().environments.map((environment) => ({ ...environment, utility_lift: 0.02 })),
+  });
+  assert.equal(recommendSkillLifecycle(metric, retiredEvidence)[0]?.kind, "retire-capability");
   assert.deepEqual(recommendSkillLifecycle(metric, evidence({ comparable_environments: 1, utility_lift: 0.02 })), []);
-  assert.deepEqual(recommendSkillLifecycle(metric, evidence({ utility_lift: 0.02, efficiency_delta: { duration_ms: -101, retries: 0, rework_cycles: 0, tool_calls: 0 } })), []);
+  assert.deepEqual(recommendSkillLifecycle(metric, evidence({
+    utility_lift: 0.02,
+    environments: evidence().environments.map((environment, index) => index === 0
+      ? { ...environment, utility_lift: 0.02, efficiency_delta: { duration_ms: -101, retries: 0, rework_cycles: 0, tool_calls: 0 } }
+      : { ...environment, utility_lift: 0.02 }),
+  })), []);
   assert.equal(recommendSkillLifecycle(metric, evidence({ skill_type: "preference", utility_lift: 0.1 }))[0]?.kind, "retain-preference");
   assert.equal(recommendSkillLifecycle(metric, evidence({ previously_retired: true, utility_lift: 0.101 }))[0]?.kind, "reactivate");
   assert.deepEqual(recommendSkillLifecycle(metric, evidence({ previously_retired: true, utility_lift: 0.1 })), []);

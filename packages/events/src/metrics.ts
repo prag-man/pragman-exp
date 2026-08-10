@@ -41,15 +41,26 @@ export function numericDistribution(values: readonly number[]): NumericDistribut
   };
 }
 
-function distinctRoutingCases(events: readonly SkillEvent[]): SkillEvent[] {
-  const records = new Map<string, SkillEvent>();
+interface RoutingCase {
+  trigger_expected: boolean | null;
+  invoked: boolean;
+}
+
+function distinctRoutingCases(events: readonly SkillEvent[]): RoutingCase[] {
+  const records = new Map<string, RoutingCase>();
   for (const record of [...events].sort((left, right) => left.timestamp.localeCompare(right.timestamp))) {
     if (record.event_type !== "eligible" && record.event_type !== "invoked") continue;
-    const key = record.eval_id === null
+    const evaluationCase = record.eval_id === null
       ? record.invocation_id
       : `${record.eval_id}/${record.case_id ?? record.invocation_id}/${record.trial_id ?? "case"}`;
-    const previous = records.get(key);
-    if (!previous || (previous.event_type !== "eligible" && record.event_type === "eligible")) records.set(key, record);
+    const key = `${record.skill_id}/${record.skill_digest}/${evaluationCase}`;
+    const previous = records.get(key) ?? { trigger_expected: null, invoked: false };
+    records.set(key, {
+      trigger_expected: record.event_type === "eligible" && record.trigger_expected !== null
+        ? record.trigger_expected
+        : previous.trigger_expected ?? record.trigger_expected,
+      invoked: previous.invoked || (record.event_type === "invoked" && record.trigger_actual !== false),
+    });
   }
   return [...records.values()];
 }
@@ -59,9 +70,9 @@ export function calculateRoutingMetrics(events: readonly SkillEvent[]) {
   const known = cases.filter((record) => record.trigger_expected !== null);
   const expected = known.filter((record) => record.trigger_expected === true);
   const notExpected = known.filter((record) => record.trigger_expected === false);
-  const invoked = known.filter((record) => record.trigger_actual === true);
-  const expectedAndInvoked = known.filter((record) => record.trigger_expected === true && record.trigger_actual === true).length;
-  const notExpectedAndNotInvoked = known.filter((record) => record.trigger_expected === false && record.trigger_actual === false).length;
+  const invoked = known.filter((record) => record.invoked);
+  const expectedAndInvoked = known.filter((record) => record.trigger_expected === true && record.invoked).length;
+  const notExpectedAndNotInvoked = known.filter((record) => record.trigger_expected === false && !record.invoked).length;
   return {
     activation_precision: rate(expectedAndInvoked, invoked.length),
     activation_recall: rate(expectedAndInvoked, expected.length),

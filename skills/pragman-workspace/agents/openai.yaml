@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pragman Workspace"
+  short_description: "Manage layered work and company context"
+  default_prompt: "Use $pragman-workspace to set up and validate my project context safely."

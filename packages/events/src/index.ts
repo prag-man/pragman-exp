@@ -19,11 +19,20 @@ export {
   createPurgePlan,
   createRetentionPlan,
   DEFAULT_RETENTION_POLICY,
+  resolveRetentionPolicy,
   retentionStateDigest,
+  runAutomaticRetentionUnderLock,
   verifyRetentionPlanDigest,
 } from "./retention.ts";
 export { aggregateWeeklyRollups, buildDailyRollups, buildRollups, rebuildRollups, sealRollup, verifyRollup } from "./rollups.ts";
-export { appendBestEffort, appendDurable, readPartition } from "./store.ts";
+export {
+  appendBestEffort,
+  appendDurable,
+  createLocalBestEffortDependencies,
+  mutateDurableRecord,
+  readPartition,
+  withEventStateTransaction,
+} from "./store.ts";
 export {
   DEFAULT_PERSONAL_CONFIG_PATH,
   loadEventSettings,
@@ -44,6 +53,11 @@ export type {
 } from "./settings.ts";
 export type {
   AutomaticRetentionPlan,
+  AutomaticRetentionDebt,
+  AutomaticRetentionRunOptions,
+  AutomaticRetentionRunResult,
+  AutomaticRetentionUnderLockDependencies,
+  AutomaticRetentionWorkPlan,
   ExplicitPurgePlan,
   PurgeClass,
   RetentionApplyDependencies,
@@ -98,6 +112,8 @@ export type {
   QuarantinedRecord,
   QuarantineReason,
   ReadPartitionResult,
+  EventStateTransaction,
+  MutationOptions,
 } from "./store.ts";
 export type {
   BooleanMetricValue,

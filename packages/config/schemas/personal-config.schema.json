@@ -45,7 +45,19 @@
       "additionalProperties": false,
       "default": { "local_events": true },
       "required": ["local_events"],
-      "properties": { "local_events": { "type": "boolean", "default": true } }
+      "properties": {
+        "local_events": { "type": "boolean", "default": true },
+        "retention": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "raw_days": { "type": "integer", "minimum": 1, "maximum": 180 },
+            "candidate_days": { "type": "integer", "minimum": 1, "maximum": 180 },
+            "quarantine_days": { "type": "integer", "minimum": 1, "maximum": 30 },
+            "daily_rollup_days": { "type": "integer", "minimum": 1, "maximum": 730 }
+          }
+        }
+      }
     },
     "routing": {
       "type": "object",

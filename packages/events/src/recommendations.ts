@@ -8,6 +8,14 @@ export interface EfficiencyDelta {
   tool_calls: number;
 }
 
+export interface EnvironmentRecommendationEvidence {
+  environment_digest: string;
+  comparable: boolean;
+  trials_per_arm: number;
+  utility_lift: number;
+  efficiency_delta: EfficiencyDelta;
+}
+
 export interface RecommendationEvidence {
   comparable: boolean;
   environment_changed: boolean;
@@ -18,6 +26,7 @@ export interface RecommendationEvidence {
   pass_rate: number;
   utility_lift: number;
   efficiency_delta: EfficiencyDelta;
+  environments: EnvironmentRecommendationEvidence[];
   skill_id: string;
   skill_digest: string;
   cohort_digest: string;
@@ -74,6 +83,14 @@ function hasMaterialEfficiencyImprovement(delta: EfficiencyDelta, policy: Metric
     || delta.tool_calls < -policy.efficiency_materiality.tool_calls;
 }
 
+function everyEnvironmentSupportsRetirement(evidence: RecommendationEvidence, policy: MetricLifecyclePolicy): boolean {
+  return evidence.environments.length >= policy.minimum_comparable_environments
+    && evidence.environments.every((environment) => environment.comparable
+      && environment.trials_per_arm >= policy.minimum_trials_per_arm
+      && environment.utility_lift <= policy.non_inferiority_margin
+      && !hasMaterialEfficiencyImprovement(environment.efficiency_delta, policy));
+}
+
 export function recommendSkillLifecycle(metric: SkillMetric, evidence: RecommendationEvidence): LifecycleRecommendation[] {
   const policy = metric.lifecycle_policy;
   if (evidence.environment_changed && evidence.current_trials_per_arm < policy.minimum_trials_per_arm) {
@@ -101,8 +118,7 @@ export function recommendSkillLifecycle(metric: SkillMetric, evidence: Recommend
       : [];
   }
   if (evidence.comparable_environments >= policy.minimum_comparable_environments
-    && evidence.utility_lift <= policy.non_inferiority_margin
-    && !hasMaterialEfficiencyImprovement(evidence.efficiency_delta, policy)) {
+    && everyEnvironmentSupportsRetirement(evidence, policy)) {
     return [recommendation(metric, evidence, "retire-capability", "CAPABILITY_BASELINE_NON_INFERIOR")];
   }
   return [];

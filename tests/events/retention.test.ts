@@ -10,6 +10,7 @@ import {
   type SkillEvent,
   type SkillScore,
 } from "../../packages/events/src/index.ts";
+import { runAutomaticRetentionUnderLock } from "../../packages/events/src/retention.ts";
 
 const digest = (character: string) => character.repeat(64);
 const invoked = (invocation_id: string, timestamp: string): SkillEvent => ({
@@ -42,6 +43,26 @@ test("automatic retention expires complete invocation and score chains from invo
   assert.equal(plan.compact_days.includes("2026-01-01"), true);
 });
 
+test("raw retention expires complete UTC days and keeps eligible evidence with a retained invocation", () => {
+  const early = invoked("early", "2026-08-09T01:00:00Z");
+  const late = invoked("late", "2026-08-09T23:00:00Z");
+  const retained = invoked("retained", "2026-08-10T00:01:00Z");
+  const eligible: SkillEvent = {
+    ...retained,
+    event_id: crypto.randomUUID(),
+    timestamp: "2025-01-01T00:00:00Z",
+    event_type: "eligible",
+    trigger_expected: true,
+    trigger_actual: null,
+  };
+  const state = { ...emptyState(), events: [eligible, early, late, retained] };
+  const plan = createRetentionPlan(state, "2026-08-10T12:00:00Z", { raw_days: 1 });
+
+  assert.deepEqual(plan.remove.event_ids, [early.event_id, late.event_id].sort());
+  assert.deepEqual(plan.compact_days, ["2026-08-09"]);
+  assert.equal(plan.remove.event_ids.includes(eligible.event_id), false);
+});
+
 test("candidate decisions, quarantine, and daily rollups expire together while weekly is retained", () => {
   const state = emptyState();
   state.candidates.push({ schema_version: 1, candidate_id: "01925b8c-7f2d-7a51-a9c0-1d4cb73b10ab", timestamp: "2026-01-01T00:00:00Z", skill_id: "pragman:review", skill_digest: digest("a"), corpus_id: "failures", source_event_digests: [digest("b")], failure_codes: ["failed"], redacted_artifact_alias: "local", redacted_artifact_digest: digest("c"), approval_status: "pending", storage_scope: "local", append_only: true });
@@ -70,6 +91,62 @@ test("automatic apply retains raw history and reports debt when compact verifica
   assert.equal(failed.applied, false);
   assert.equal(failed.reason, "RETENTION_DEBT");
   assert.deepEqual(failed.state.events, [old]);
+});
+
+test("automatic retention exposes the under-lock seal, verify, recompute, delete, and debt result", async () => {
+  const old = invoked("old", "2026-01-01T00:00:00Z");
+  const state = { ...emptyState(), events: [old] };
+  const result = await runAutomaticRetentionUnderLock(state, {
+    sealAndVerifyDaily: async () => false,
+    recomputeWeekly: async () => true,
+  }, { now: new Date("2026-08-10T00:00:00Z") });
+
+  assert.deepEqual(result.work_plan.seal_and_verify_days, ["2026-01-01"]);
+  assert.deepEqual(result.work_plan.recompute_week_starts, ["2025-12-29"]);
+  assert.deepEqual(result.work_plan.delete.event_ids, [old.event_id]);
+  assert.deepEqual(result.debt, {
+    unavailable_metric_definition_digests: [],
+    seal_and_verify_days: ["2026-01-01"],
+    recompute_week_starts: [],
+  });
+  assert.equal(result.applied, false);
+  assert.deepEqual(result.state.events, [old]);
+});
+
+test("automatic retention preserves raw evidence when a historical score metric is unavailable", async () => {
+  const old = invoked("old", "2026-01-01T00:00:00Z");
+  const score: SkillScore = {
+    schema_version: 1, score_id: crypto.randomUUID(), timestamp: "2026-01-01T00:01:00Z", invocation_id: "old",
+    metric_id: "retired-metric", metric_definition_digest: digest("f"), value: true, value_type: "boolean",
+    source: "deterministic", grader_id: "grader", grader_version: "1", rubric_digest: digest("b"),
+    evidence_digests: [digest("c")], storage_scope: "local",
+  };
+  const state = { ...emptyState(), events: [old], scores: [score] };
+  let compactionCalls = 0;
+  const result = await runAutomaticRetentionUnderLock(state, {
+    isMetricDefinitionAvailable: () => false,
+    sealAndVerifyDaily: async () => { compactionCalls += 1; return true; },
+    recomputeWeekly: async () => { compactionCalls += 1; return true; },
+  }, { now: new Date("2026-08-10T00:00:00Z") });
+
+  assert.equal(result.applied, false);
+  assert.equal(result.reason, "RETENTION_DEBT");
+  assert.deepEqual(result.debt.unavailable_metric_definition_digests, [digest("f")]);
+  assert.equal(compactionCalls, 0);
+  assert.deepEqual(result.state.events, [old]);
+  assert.deepEqual(result.state.scores, [score]);
+
+  const plan = createRetentionPlan(state, "2026-08-10T00:00:00Z");
+  const legacyApply = await applyRetentionPlan(plan, state, {
+    now: () => new Date("2026-08-10T00:01:00Z"),
+    withMutationLock: async (operation) => operation(),
+    sealAndVerifyDaily: async () => { compactionCalls += 1; return true; },
+    recomputeWeekly: async () => { compactionCalls += 1; return true; },
+  });
+  assert.equal(legacyApply.applied, false);
+  assert.equal(legacyApply.reason, "RETENTION_DEBT");
+  assert.deepEqual(legacyApply.debt_metric_definition_digests, [digest("f")]);
+  assert.equal(compactionCalls, 0);
 });
 
 test("explicit purge plans bind class/range/current state and disclose lost rebuildability", () => {

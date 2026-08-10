@@ -70,6 +70,53 @@ test("routing rates expose numerators and denominators and exclude unknown expec
   assert.equal(result.excluded_unknown_expectation, 1);
 });
 
+test("routing aggregates eligibility expectation with the matching invocation", () => {
+  const eligible = event(1, {
+    event_type: "eligible",
+    trigger_expected: true,
+    trigger_actual: false,
+  });
+  const invoked = event(1, {
+    event_id: "30000001-7f2d-7a51-a9c0-1d4cb73b10ab",
+    timestamp: "2026-08-10T12:02:00Z",
+    event_type: "invoked",
+    trigger_expected: null,
+    trigger_actual: true,
+  });
+
+  const result = calculateRoutingMetrics([eligible, invoked]);
+
+  assert.deepEqual(result.activation_precision, { numerator: 1, denominator: 1, rate: 1 });
+  assert.deepEqual(result.activation_recall, { numerator: 1, denominator: 1, rate: 1 });
+  assert.deepEqual(result.no_op_accuracy, { numerator: 0, denominator: 0, rate: null });
+  assert.equal(result.excluded_unknown_expectation, 0);
+});
+
+test("routing keeps distinct skills separate when eval case and trial identities match", () => {
+  const shared = { eval_id: "eval-one", case_id: "shared-case", trial_id: "shared-trial" } as const;
+  const expected = event(1, { ...shared, event_type: "eligible", trigger_expected: true, trigger_actual: false });
+  const invoked = event(1, {
+    ...shared,
+    event_id: "30000001-7f2d-7a51-a9c0-1d4cb73b10ab",
+    event_type: "invoked",
+    trigger_expected: null,
+    trigger_actual: true,
+  });
+  const noOp = event(2, {
+    ...shared,
+    event_type: "eligible",
+    skill_id: "pragman:plan",
+    skill_digest: digest("9"),
+    trigger_expected: false,
+    trigger_actual: false,
+  });
+
+  const result = calculateRoutingMetrics([expected, invoked, noOp]);
+  assert.deepEqual(result.activation_precision, { numerator: 1, denominator: 1, rate: 1 });
+  assert.deepEqual(result.activation_recall, { numerator: 1, denominator: 1, rate: 1 });
+  assert.deepEqual(result.no_op_accuracy, { numerator: 1, denominator: 1, rate: 1 });
+});
+
 test("outcomes use completed verifier-eligible invocations and stable distributions", () => {
   const events = [
     event(1), event(1, { event_id: "30000001-7f2d-7a51-a9c0-1d4cb73b10ab", event_type: "completed", status: "succeeded", outcome_code: "verified-success", duration_ms: 30, verification_checks: 2, verification_passes: 2 }),

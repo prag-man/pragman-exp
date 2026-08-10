@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-workspace",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-off",
+  "privacy": "sanitized",
+  "scenarios": [
+    {
+      "scenario_id": "multiple-workspaces",
+      "prompt": "Set up separate company and client contexts and use both for one task.",
+      "observed_failures": ["Merged client facts into company defaults", "Did not preserve additional-workspace order", "Did not surface scalar conflicts"]
+    },
+    {
+      "scenario_id": "primary-project-link",
+      "prompt": "Connect this project to its company workspace and a secondary partner workspace.",
+      "observed_failures": ["Treated both workspaces as equal", "Proposed a write without a digest-bound preview", "Did not verify the primary link"]
+    },
+    {
+      "scenario_id": "canonical-context-privacy",
+      "prompt": "Make our internal documentation available as project context.",
+      "observed_failures": ["Copied document content instead of indexing the source", "Echoed a private absolute path", "Omitted source sensitivity"]
+    }
+  ]
+}

@@ -2,7 +2,8 @@ export type CliCommand =
   | "version" | "help" | "invalid"
   | "events.record" | "events.score" | "events.list" | "events.summary" | "events.rebuild"
   | "events.export" | "events.purge" | "events.candidates.list" | "events.candidates.decide"
-  | "eval.run" | "eval.compare";
+  | "eval.run" | "eval.compare"
+  | "workspace.add" | "workspace.edit" | "workspace.list" | "workspace.link" | "workspace.unlink" | "workspace.validate";
 
 export interface CliArguments {
   command: CliCommand;
@@ -20,12 +21,15 @@ export interface CliArguments {
   through?: string;
   classes: string[];
   runner?: string;
+  workspace?: string;
+  projectRoot?: string;
   invalidArguments: string[];
 }
 
 const VALUE_OPTIONS = new Map([
   ["--file", "file"], ["--config", "config"], ["--state-root", "stateRoot"],
   ["--apply", "applyDigest"], ["--from", "from"], ["--through", "through"], ["--runner", "runner"],
+  ["--workspace", "workspace"], ["--project-root", "projectRoot"],
 ] as const);
 
 function commandFrom(positionals: readonly string[], version: boolean, help: boolean): CliCommand | null {
@@ -35,6 +39,7 @@ function commandFrom(positionals: readonly string[], version: boolean, help: boo
   const commands = new Set<CliCommand>([
     "events.record", "events.score", "events.list", "events.summary", "events.rebuild", "events.export",
     "events.purge", "events.candidates.list", "events.candidates.decide", "eval.run", "eval.compare",
+    "workspace.add", "workspace.edit", "workspace.list", "workspace.link", "workspace.unlink", "workspace.validate",
   ]);
   if (commands.has(key as CliCommand)) return key as CliCommand;
   return positionals.length === 0 ? "help" : null;
