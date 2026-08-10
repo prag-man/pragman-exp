@@ -25,6 +25,8 @@ Shape only as much as the route requires, then select capabilitiesâ€”not brandsâ
 - Deep: ambiguity, cross-system scope, high uncertainty, costly reversal, or high downstream impact; shape before execution.
 - Operational: credentials, infrastructure, deployment, external accounts, destructive/live mutation; separate preparation from mutation.
 
+Fast output is the task answer, not a routing report. Do not interview, request confirmation, invite more context, or ask for approval. Missing example detail does not by itself reclassify an otherwise obvious read-only explanation: answer at the abstraction level provided and state any limitation or next input declaratively, with zero questions. Only ambiguity that makes the bounded result materially different permits one focused question, and that first reclassifies the request out of Fast.
+
 Scale the explanation to the decision. On the Fast lane, lead with the direct answer or next action, then use at most one short sentence to name the lane and lightest sufficient capability. Omit the normalized input, full contract, score table, rejected-provider inventory, and approval catalogue unless they change a choice or the user asks for them.
 
 If no eligible provider exists, disclose the missing capability and offer a specific install recommendation, compatible equal-trust fallback, or bounded manual handoff. Never claim a provider ran or succeeded without host evidence.
