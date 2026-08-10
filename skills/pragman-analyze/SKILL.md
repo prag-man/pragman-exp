@@ -22,6 +22,10 @@ Produce a decision-grade analysis grounded in observable evidence. A good result
 
 Lead with the outcome and the few highest-leverage findings. Include scope, evidence coverage, all eleven dimensions, root-cause framing, exact action groups, confidence, unresolved questions, and the next decision. If work is still in flight, say so and avoid treating temporary waits as final failures.
 
+## CLI unavailable
+
+Produce the same evidence index and Markdown structure manually. Disclose that deterministic JSON validation, aggregate event loading, comparable-metric checks, and report rendering were not performed. Do not claim measured improvement or mutate configuration from an unvalidated report.
+
 ## Guardrails
 
 - Do not turn a retrospective into generic advice detached from evidence.

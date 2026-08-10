@@ -27,6 +27,10 @@ Research starts with the decision it must enable. Match effort to consequence, u
 - Decision research: compare realistic alternatives against explicit criteria and switching costs.
 - Internal workspace: use configured source aliases with tenant/company boundaries and least privilege.
 
+## CLI unavailable
+
+Use the host's approved research tools or user-supplied evidence and keep the same source/evidence contract. Disclose that deterministic provider routing, connector health checks, and local evidence indexing were not performed. Do not install providers or imply access to unavailable sources.
+
 ## Guardrails
 
 - Browse when freshness matters; say when browsing or a connector is unavailable.

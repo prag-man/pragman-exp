@@ -13,13 +13,18 @@
     "dist/",
     "evals/fixtures/",
     "evals/metrics/",
+    "host-adapters/",
     "packages/config/schemas/",
+    "providers/",
+    "skills/",
     "scripts/"
   ],
   "scripts": {
     "build": "tsc",
     "prepack": "npm run build",
     "test": "node scripts/run-tests.mjs",
+    "validate:skills": "node scripts/validate-skills.mjs",
+    "eval": "node scripts/run-evals.mjs --mode skill-eval evals/fixtures/skill-events/baseline.json --observed evals/fixtures/skill-events/forward.json --output -",
     "evals": "node scripts/run-evals.mjs --mode skill-eval evals/fixtures/skill-events/baseline.json --observed evals/fixtures/skill-events/forward.json --output -"
   },
   "dependencies": {

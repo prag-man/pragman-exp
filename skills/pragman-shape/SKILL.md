@@ -22,6 +22,10 @@ Turn an ambiguous opportunity into the smallest valuable, testable contract. Pre
 
 Return problem and intended user, evidence and assumptions, desired outcome, smallest valuable bet, non-goals, success and kill criteria, dependencies and risks, recommended lane/provider route, unresolved decisions, and the exact approval needed next.
 
+## CLI unavailable
+
+Produce the portable shape contract manually and disclose that deterministic capability validation, provider health/ranking, and approval derivation were not performed. Recommend a provider only as an unverified handoff; do not install or invoke it automatically.
+
 ## Guardrails
 
 - Do not turn the user's first solution into the problem statement.

@@ -10,6 +10,7 @@ import { executeScanCommand } from "./commands/scan.ts";
 import { executeDoctorCommand } from "./commands/doctor.ts";
 import { executeProvidersCommand } from "./commands/providers.ts";
 import { executeRouteCommand } from "./commands/route.ts";
+import { executeChangesCommand } from "./commands/changes.ts";
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -117,6 +118,8 @@ export async function runCli(
               ? await executeProvidersCommand(arguments_)
               : arguments_.command === "route"
                 ? await executeRouteCommand(arguments_, io)
+                : arguments_.command.startsWith("changes.")
+                  ? await executeChangesCommand(arguments_, io)
             : await executeEvalCommand(arguments_, io);
   render(result, arguments_.json);
   return result.exitCode;
