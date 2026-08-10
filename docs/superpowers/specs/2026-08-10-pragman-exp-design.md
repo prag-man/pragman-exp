@@ -301,8 +301,8 @@ Example manifest:
 
 ```yaml
 schema_version: 1
-workspace: vimaksh
-product: paryatech
+workspace: example-co
+product: example-product
 ```
 
 The context index points to canonical project documents with descriptions, scopes, and retrieval hints. It does not duplicate source documents.
@@ -436,13 +436,13 @@ Project rules override workspace rules, which override personal rules. Explicit 
 schema_version: 1
 route_id: 0198a4c0-6e34-7d18-a148-2e919fb2ad42
 parent_route_id: null
-request_digest: sha256:example
+request_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 outcome: Fix inbox replies failing after mailbox expiry
 lane: standard
 deliverable_kind: project-change
 execution_mode: serial
-workspace: vimaksh
-project: paryatech
+workspace: example-co
+project: example-product
 in_scope:
   - reproduce the failure
   - identify the root cause
@@ -499,7 +499,7 @@ Required behavior:
 - Preview and validate changes.
 - Preserve privacy boundaries between workspaces.
 - Support later reconfiguration without rerunning full init.
-- Generate a private context skill when useful, such as `pragman-paryatech`, whose body routes to canonical sources rather than embedding the whole knowledge base.
+- Generate a private context skill when useful, such as `company-product-context`, whose body routes to canonical sources rather than embedding the whole knowledge base.
 
 ### 12.2 `pragman-init`
 
@@ -763,17 +763,17 @@ Third-party providers are not installed as hidden dependencies. Init recommends 
 - `pragman doctor` reports core, CLI, schema, provider, and host-adapter compatibility.
 - Updates never overwrite private overlays.
 
-## 19. Private Vimaksh/Paryatech workspace
+## 19. Private reference workspace
 
 The first private reference workspace provides an additional local validation against real founder/CTO and team workflows.
 
 It will:
 
-- Model Pragyam's role and working preferences without publishing them.
-- Model Vimaksh, Paryatech, and relevant products as private context.
-- Index Paryatech canonical documentation rather than copy it.
+- Model a founder/CTO role and working preferences without publishing them.
+- Model a reference company and product as private context.
+- Index the product's canonical documentation rather than copy it.
 - Define provider preferences for research, shaping, engineering, design, QA, infrastructure, and retrospectives.
-- Add a private `pragman-paryatech` context skill.
+- Add a private product-context skill.
 - Exercise multi-workspace and project-linking behavior.
 - Supply sanitized evaluation scenarios where permitted.
 
@@ -797,7 +797,7 @@ Implementation proceeds in strict vertical units:
 
 Each public unit receives its own behavior scenarios and must pass deterministic and behavioral gates before the next public unit begins. Implementation planning must preserve these boundaries and may split a unit further; it may not combine units into one unverified batch.
 
-The private Vimaksh/Paryatech workspace is a parallel reference track, not a public delivery unit. It may begin after public units 2 and 3 establish workspace/init contracts. Its local attestation informs internal adoption and future sanitized fixtures, but it neither blocks nor satisfies public unit 10.
+The private reference workspace is a parallel validation track, not a public delivery unit. It may begin after public units 2 and 3 establish workspace/init contracts. Its local attestation informs internal adoption and future sanitized fixtures, but it neither blocks nor satisfies public unit 10.
 
 ## 21. V1 acceptance criteria
 
@@ -881,7 +881,7 @@ A change record contains:
 schema_version: 1
 change_id: uuidv7
 target: personal | workspace | project
-target_id: vimaksh
+target_id: example-co
 base_digest: sha256
 preview_digest: sha256
 operations: []
@@ -1151,7 +1151,7 @@ Skill-only mode must disclose that deterministic guarantees are unavailable. Acc
 
 ## 29. Reproducible acceptance matrix
 
-Public release gates use sanitized repository fixtures only. Private Vimaksh/Paryatech validation produces an optional local attestation and may delay an internal rollout, but it cannot block, pass, or substitute for reproducible public CI.
+Public release gates use sanitized repository fixtures only. Private reference-workspace validation produces an optional local attestation and may delay an internal rollout, but it cannot block, pass, or substitute for reproducible public CI.
 
 | Area | Minimum scenarios | Observable oracle |
 | --- | --- | --- |

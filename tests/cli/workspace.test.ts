@@ -81,7 +81,7 @@ test("workspace edit validates the proposed configuration and rejects stale appl
   const createDigest = JSON.parse(created.stdout).data.preview_digest;
   assert.equal(invoke(["workspace", "add", "--config", personalRoot, "--apply", createDigest], workspace("company", companyRoot)).status, 0);
 
-  const editInput = { operations: [{ op: "replace", path: "/name", value: "Vimaksh" }], reason: "Use current company name" };
+  const editInput = { operations: [{ op: "replace", path: "/name", value: "Example Co" }], reason: "Use current company name" };
   const preview = invoke(["workspace", "edit", "--config", personalRoot, "--workspace", "company"], editInput);
   assert.equal(preview.status, 0, preview.stderr);
   const digest = JSON.parse(preview.stdout).data.preview_digest;
@@ -126,7 +126,7 @@ test("project link preserves one primary and ordered additional workspaces", asy
     const preview = invoke(["workspace", "add", "--config", personalRoot], value);
     invoke(["workspace", "add", "--config", personalRoot, "--apply", JSON.parse(preview.stdout).data.preview_digest], value);
   }
-  const link = { project_id: "paryatech", workspace: "company", additional_workspaces: ["client"] };
+  const link = { project_id: "example-product", workspace: "company", additional_workspaces: ["client"] };
   const preview = invoke(["workspace", "link", "--config", personalRoot, "--project-root", projectRoot, "--non-interactive"], link);
   assert.equal(preview.status, 0, preview.stderr);
   const digest = JSON.parse(preview.stdout).data.preview_digest;
