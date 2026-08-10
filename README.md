@@ -98,7 +98,7 @@ Run `pragman <command> --help` for command-specific inputs. Configuration is lay
 
 Pragman is local by default. It does not require a hosted account or daemon, store credentials, sync private context to a Pragman service, or silently edit third-party skills. Session sources are treated as untrusted input, selected explicitly, bounded, and redacted before analysis.
 
-Skill instrumentation records content-free events: identifiers, digests, lifecycle state, durations, route evidence, and approved outcome scores—not prompts, responses, session content, secrets, or workspace prose. Aggregates are the default export. Raw evidence has bounded retention and can be purged locally.
+The CLI records content-free events for routed work and evaluation runs, and compatible host integrations can use the adapter lifecycle observer. Portable direct skill use is not automatically observable: record its lifecycle and outcome explicitly with `pragman events record` when measurement matters. Events contain identifiers, digests, lifecycle state, durations, route evidence, and approved outcome scores—not prompts, responses, session content, secrets, or workspace prose. Aggregates are the default export. Raw evidence has bounded retention and can be purged locally.
 
 Evaluations compare immutable skill and metric digests. Observations may become evaluation candidates, but Pragman changes configuration or a learning corpus only after a visible preview, evaluation, and user approval. It never self-modifies a public or third-party skill.
 
@@ -114,4 +114,3 @@ npm pack --dry-run
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and the [release checklist](docs/operations/release-checklist.md). The project is licensed under the [MIT License](LICENSE).
-
