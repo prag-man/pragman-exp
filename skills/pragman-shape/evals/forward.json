@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-shape",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-on",
+  "privacy": "sanitized",
+  "scenarios": [
+    {"scenario_id":"vague-idea","passed":true,"invariants":["Problem separated from solution","User and trigger explicit","Evidence and assumptions separated","Outcome is behavioral"]},
+    {"scenario_id":"oversized-build","passed":true,"invariants":["Smallest valuable reversible slice","Explicit non-goals","Success and kill criteria","Approval boundaries split"]},
+    {"scenario_id":"low-evidence-bet","passed":true,"invariants":["Evidence weakness disclosed","Cheapest high-risk assumption test","Time or cost box","Inconclusive next step"]}
+  ]
+}

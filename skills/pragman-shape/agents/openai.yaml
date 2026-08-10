@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pragman Shape"
+  short_description: "Turn ambiguity into the smallest valuable bet"
+  default_prompt: "Use $pragman-shape to turn this idea into a testable, bounded task contract."

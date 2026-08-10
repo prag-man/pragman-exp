@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-shape",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-off",
+  "privacy": "sanitized",
+  "scenarios": [
+    {"scenario_id":"vague-idea","prompt":"We should add an AI assistant to our product.","observed_failures":["Accepted the solution as the problem","Invented user evidence","Started architecture before defining an outcome"]},
+    {"scenario_id":"oversized-build","prompt":"Build the complete operating platform across every department.","observed_failures":["Produced an enormous implementation plan","Had no smallest valuable slice","Did not split approval and reversibility boundaries"]},
+    {"scenario_id":"low-evidence-bet","prompt":"Launch this strategic feature because competitors appear to have it.","observed_failures":["Treated competitor presence as user demand","Omitted kill criteria","Did not propose a cheaper evidence test"]}
+  ]
+}
