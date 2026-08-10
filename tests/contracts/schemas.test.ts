@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
+import { parse } from "yaml";
 
 const schemaDirectory = new URL("../../packages/config/schemas/", import.meta.url);
 const expectedSchemas = [
@@ -130,9 +131,9 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
     trust: "bundled",
     capabilities: ["code-review"],
     host_support: ["codex"],
-    invoke: { type: "native-skill", skill_id: "review" },
+    invoke: { kind: "native-skill", skill_id: "pragman:review" },
     context_policy: {
-      accepted_context_classes: ["task-contract", "redacted-excerpt"],
+      accepted_classes: ["task-contract", "redacted-excerpt"],
       maximum_sensitivity: "confidential",
       accepts_redacted_excerpts: true,
     },
@@ -151,10 +152,18 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
   assert.equal(
     ajv.compile(schemas["provider.schema.json"])({
       ...provider,
-      invoke: { type: "cli", executable: "/tmp/arbitrary", arguments: [] },
+      invoke: { kind: "cli", executable: "/tmp/arbitrary", arguments: [] },
     }),
     false,
   );
+  const validateBundledProvider = ajv.compile(schemas["provider.schema.json"]);
+  const providerDirectory = new URL("../../providers/", import.meta.url);
+  for (const file of (await readdir(providerDirectory)).filter((name) => name !== "capabilities.yaml" && name.endsWith(".yaml"))) {
+    const document = parse(await readFile(new URL(file, providerDirectory), "utf8"), { merge: true }) as { providers?: unknown[] };
+    for (const bundled of document.providers ?? []) {
+      assert.equal(validateBundledProvider(bundled), true, `${file}: ${JSON.stringify(validateBundledProvider.errors)}`);
+    }
+  }
 
   const contract = {
     schema_version: 1,

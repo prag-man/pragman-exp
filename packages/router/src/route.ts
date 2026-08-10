@@ -7,7 +7,7 @@ import { rankProviders } from "./scoring.ts";
 import { chooseProviderSequence, resolveCapabilityClosure, selectFallback } from "./sequences.ts";
 import { RouterError, type ApprovalRequirement, type Capability, type Lane, type Provider, type ProviderSequence, type RouteExplanation, type RouteInput, type RouteResult, type RoutingRule, type Sensitivity, type SideEffect, type TaskContract, type ApprovedOutcome } from "./types.ts";
 
-function digest(value: unknown): string { return `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`; }
+function digest(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 function uuidV7(): string {
   const bytes = randomBytes(16); let milliseconds = Date.now();
   for (let index = 5; index >= 0; index -= 1) { bytes[index] = milliseconds & 0xff; milliseconds = Math.floor(milliseconds / 256); }
