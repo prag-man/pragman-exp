@@ -13,6 +13,7 @@ const expectedSchemas = [
   "personal-config.schema.json",
   "profile.schema.json",
   "project.schema.json",
+  "provider-overrides.schema.json",
   "provider.schema.json",
   "route-evidence.schema.json",
   "routing.schema.json",

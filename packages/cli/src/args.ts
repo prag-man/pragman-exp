@@ -4,7 +4,8 @@ export type CliCommand =
   | "events.record" | "events.score" | "events.list" | "events.summary" | "events.rebuild"
   | "events.export" | "events.purge" | "events.candidates.list" | "events.candidates.decide"
   | "eval.run" | "eval.compare"
-  | "route" | "providers.list" | "providers.inspect"
+  | "tune"
+  | "route" | "providers.list" | "providers.inspect" | "providers.prefer" | "providers.trust"
   | "changes.list" | "changes.preview" | "changes.apply" | "changes.rollback" | "history.purge"
   | "sessions.scan" | "sessions.analyze" | "sessions.purge"
   | "workspace.add" | "workspace.edit" | "workspace.list" | "workspace.link" | "workspace.unlink" | "workspace.validate";
@@ -18,6 +19,7 @@ export interface CliArguments {
   stateRoot?: string;
   applyDigest?: string;
   preview: boolean;
+  acknowledgeTrust: boolean;
   overrideLocalEvents: boolean;
   raw: boolean;
   confirmContentFreeRaw: boolean;
@@ -35,6 +37,7 @@ export interface CliArguments {
   targetId?: string;
   change?: string;
   invalidArguments: string[];
+  helpTarget?: string;
 }
 
 const VALUE_OPTIONS = new Map([
@@ -47,16 +50,17 @@ const VALUE_OPTIONS = new Map([
 
 function commandFrom(positionals: readonly string[], version: boolean, help: boolean): CliCommand | null {
   if (version) return positionals.length === 0 ? "version" : null;
-  if (help && positionals.length === 0) return "help";
-  const key = positionals.join(".");
+  const rawKey = positionals.join(".");
+  const key = rawKey === "eval" ? "eval.run" : rawKey;
   const commands = new Set<CliCommand>([
-    "init", "scan", "doctor", "route", "providers.list", "providers.inspect",
+    "init", "scan", "doctor", "route", "tune", "providers.list", "providers.inspect", "providers.prefer", "providers.trust",
     "changes.list", "changes.preview", "changes.apply", "changes.rollback", "history.purge",
     "sessions.scan", "sessions.analyze", "sessions.purge",
     "events.record", "events.score", "events.list", "events.summary", "events.rebuild", "events.export",
     "events.purge", "events.candidates.list", "events.candidates.decide", "eval.run", "eval.compare",
     "workspace.add", "workspace.edit", "workspace.list", "workspace.link", "workspace.unlink", "workspace.validate",
   ]);
+  if (help) return positionals.length === 0 || commands.has(key as CliCommand) ? "help" : null;
   if (commands.has(key as CliCommand)) return key as CliCommand;
   return positionals.length === 0 ? "help" : null;
 }
@@ -65,6 +69,7 @@ export function parseArguments(argv: readonly string[]): CliArguments {
   let json = false;
   let nonInteractive = false;
   let preview = false;
+  let acknowledgeTrust = false;
   let overrideLocalEvents = false;
   let raw = false;
   let confirmContentFreeRaw = false;
@@ -80,6 +85,7 @@ export function parseArguments(argv: readonly string[]): CliArguments {
     if (argument === "--json") json = true;
     else if (argument === "--non-interactive") nonInteractive = true;
     else if (argument === "--preview") preview = true;
+    else if (argument === "--acknowledge-trust" || argument === "--acknowledge") acknowledgeTrust = true;
     else if (argument === "--override-local-events") overrideLocalEvents = true;
     else if (argument === "--raw") raw = true;
     else if (argument === "--confirm-content-free-raw") confirmContentFreeRaw = true;
@@ -100,8 +106,9 @@ export function parseArguments(argv: readonly string[]): CliArguments {
   if (command === null) invalidArguments.push(...positionals);
   const result: CliArguments = {
     command: invalidArguments.length > 0 ? "invalid" : command ?? "help",
-    json, nonInteractive, preview, overrideLocalEvents, raw, confirmContentFreeRaw, classes, invalidArguments,
+    json, nonInteractive, preview, acknowledgeTrust, overrideLocalEvents, raw, confirmContentFreeRaw, classes, invalidArguments,
   };
+  if (help && positionals.length > 0 && command === "help") result.helpTarget = positionals.join(" ");
   for (const [key, value] of Object.entries(values)) if (value !== undefined) (result as unknown as Record<string, unknown>)[key] = value;
   return result;
 }

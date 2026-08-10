@@ -54,7 +54,7 @@ export async function executeRouteCommand(arguments_: CliArguments, io: CommandI
   try {
     const input = await readInput(arguments_, io);
     assertRouteInput(input);
-    const { registry, host, warnings } = await loadRuntimeProviderRegistry(arguments_);
+    const { registry, host, warnings, personalPreferences } = await loadRuntimeProviderRegistry(arguments_);
     const requested = registry.validateRequestedCapabilities(input.requested_capabilities);
     if (!requested.ok) throw new RouterError(requested.code, `Requested capabilities are invalid: ${requested.capabilities.join(", ")}`);
     const projected = projectProviderRegistry(registry);
@@ -69,6 +69,7 @@ export async function executeRouteCommand(arguments_: CliArguments, io: CommandI
       activeHost: host,
       allowedSideEffects: input.declared_side_effects,
       projectLinks,
+      personalPreferences,
       ...(arguments_.provider ? { explicitProviders: [arguments_.provider] } : {}),
     });
     if (result.status !== "ready" && result.status !== "existing") {
