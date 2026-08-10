@@ -52,9 +52,13 @@ test("tag release uses npm trusted publishing, provenance, and checksummed relea
   assert.equal(workflow.permissions.contents, "write");
   assert.match(source, /npm@11\.5\.1/);
   assert.match(source, /npm publish[^\n]*--provenance/);
+  assert.match(source, /verification\.verified/);
+  assert.match(source, /merge-base --is-ancestor/);
+  assert.match(source, /npm view .*dist\.integrity/);
   assert.match(source, /verify-package\.mjs/);
   assert.match(source, /checksums-sha256\.txt/);
   assert.match(source, /gh release create/);
+  assert.match(source, /gh release upload[^\n]*--clobber/);
   assert.doesNotMatch(source, /NODE_AUTH_TOKEN|NPM_TOKEN/);
 });
 

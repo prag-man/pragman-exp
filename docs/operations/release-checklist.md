@@ -35,9 +35,9 @@ The first scope/package publication cannot use trusted publishing until npm know
 
 - [ ] Change only the version from the verified beta source to stable `0.1.0` and rerun every local gate.
 - [ ] Merge the version commit and confirm `main` CI is green.
-- [ ] Create a signed annotated tag: `git tag -s v0.1.0 -m "Pragman Exp v0.1.0"`.
+- [ ] Create a signed annotated tag: `git tag -s v0.1.0 -m "Pragman Exp v0.1.0"` (or SSH-sign it with a signing key registered and verified on GitHub).
 - [ ] Verify locally with `git verify-tag v0.1.0`, then push only the tag.
-- [ ] Watch `release.yml`. It must verify the tag, package/tag version match, tests, skills, evals, exact package archive, checksum, OIDC publication with provenance, and GitHub release creation.
+- [ ] Watch `release.yml`. It must verify the GitHub-verified tag signature, main ancestry, package/tag version match, tests, skills, evals, exact package archive, checksum, OIDC publication with provenance, and GitHub release creation.
 - [ ] Confirm npm stable metadata, provenance, tarball integrity, GitHub tag/commit, release archive, and checksum all resolve to the same source commit.
 
 ## 5. Verify remote install and skills.sh
