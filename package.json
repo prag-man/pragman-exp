@@ -23,7 +23,10 @@
     "pragman": "dist/packages/cli/src/index.js"
   },
   "files": [
+    "CONTRIBUTING.md",
+    "SECURITY.md",
     "dist/",
+    "docs/operations/",
     "evals/fixtures/",
     "evals/metrics/",
     "host-adapters/",
