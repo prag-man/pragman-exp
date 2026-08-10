@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { lstat, mkdir, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -8,24 +8,38 @@ import type { CliArguments } from "../args.ts";
 import { errorEnvelope, EXIT_CODES, successEnvelope } from "../envelope.ts";
 import type { CommandExecution, CommandIo } from "./events.ts";
 import { DEFAULT_EVENT_STATE_ROOT, loadRetentionState } from "./events.ts";
+import { loadEvalEvidenceArtifact, type EvalEvidenceArtifact } from "./eval.ts";
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const EVIDENCE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SECRET = /(?:sk-(?:proj-)?[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN [A-Z ]+PRIVATE KEY-----)/;
 
 interface TuneInput {
   candidate_id: string;
   candidate_digest: string;
   scenario: { scenario_id: string; failure_codes: string[]; acceptance_invariants: string[] };
-  evaluation: { status: "COMPARABLE"; passed: true; candidate_digest: string; skill_digest: string; evidence_digest: string };
+  evaluation: { evidence_id: string; artifact_digest: string };
+}
+
+interface VerifiedEvaluation {
+  artifact: EvalEvidenceArtifact;
+  artifactDigest: string;
+  comparisonSkillDigest: string;
 }
 
 function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value); }
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value);
+  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+}
+
 function failure(error: unknown): CommandExecution {
   const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "INTERNAL";
   const message = error instanceof Error ? error.message : "Tune failed";
-  const exitCode = code === "NEEDS_INPUT" ? EXIT_CODES.needsInput : code === "STALE_PREVIEW" || code === "PRIVACY_DENIED" || code === "EVALUATION_FAILED" ? EXIT_CODES.denied
-    : code === "INTERNAL" ? EXIT_CODES.internal : EXIT_CODES.invalid;
+  const exitCode = code === "NEEDS_INPUT" ? EXIT_CODES.needsInput
+    : code === "STALE_PREVIEW" || code === "PRIVACY_DENIED" || code === "EVALUATION_FAILED" ? EXIT_CODES.denied
+      : code === "INTERNAL" ? EXIT_CODES.internal : EXIT_CODES.invalid;
   return { exitCode, envelope: errorEnvelope("tune", code, message), human: message, stderr: true };
 }
 
@@ -34,7 +48,9 @@ async function readInput(arguments_: CliArguments, io: CommandIo): Promise<TuneI
   if (!raw.trim()) throw Object.assign(new Error("Approved candidate and evaluation JSON are required"), { code: "NEEDS_INPUT" });
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw Object.assign(new Error("Tune input must be valid JSON"), { code: "INVALID_INPUT" }); }
-  if (!object(value) || Object.keys(value).sort().join(",") !== "candidate_digest,candidate_id,evaluation,scenario" || !object(value.scenario) || !object(value.evaluation)) {
+  if (!object(value) || !exactKeys(value, ["candidate_id", "candidate_digest", "scenario", "evaluation"])
+    || !object(value.scenario) || !exactKeys(value.scenario, ["scenario_id", "failure_codes", "acceptance_invariants"])
+    || !object(value.evaluation) || !exactKeys(value.evaluation, ["evidence_id", "artifact_digest"])) {
     throw Object.assign(new Error("Tune input fields are invalid"), { code: "INVALID_INPUT" });
   }
   const scenario = value.scenario;
@@ -42,12 +58,13 @@ async function readInput(arguments_: CliArguments, io: CommandIo): Promise<TuneI
   const arrays = Array.isArray(scenario.failure_codes) && scenario.failure_codes.every((entry) => typeof entry === "string" && SLUG.test(entry))
     && Array.isArray(scenario.acceptance_invariants) && scenario.acceptance_invariants.length > 0 && scenario.acceptance_invariants.length <= 16
     && scenario.acceptance_invariants.every((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 200 && !SECRET.test(entry));
-  if (typeof value.candidate_id !== "string" || typeof value.candidate_digest !== "string" || !SHA256.test(value.candidate_digest)
+  if (typeof value.candidate_id !== "string" || value.candidate_id.length < 1 || value.candidate_id.length > 128
+    || typeof value.candidate_digest !== "string" || !SHA256.test(value.candidate_digest)
     || typeof scenario.scenario_id !== "string" || !SLUG.test(scenario.scenario_id) || !arrays
-    || evaluation.status !== "COMPARABLE" || evaluation.passed !== true || ![evaluation.candidate_digest, evaluation.skill_digest, evaluation.evidence_digest].every((entry) => typeof entry === "string" && SHA256.test(entry))) {
+    || typeof evaluation.evidence_id !== "string" || evaluation.evidence_id.length > 96 || !EVIDENCE_ID.test(evaluation.evidence_id)
+    || typeof evaluation.artifact_digest !== "string" || !SHA256.test(evaluation.artifact_digest)) {
     throw Object.assign(new Error("Tune candidate, scenario, or evaluation evidence is invalid"), { code: "INVALID_INPUT" });
   }
-  if (evaluation.candidate_digest !== value.candidate_digest) throw Object.assign(new Error("Evaluation is not bound to the selected candidate"), { code: "EVALUATION_FAILED" });
   return value as unknown as TuneInput;
 }
 
@@ -60,12 +77,86 @@ function approvedCandidate(candidates: EvalCandidate[], approvals: EvalCandidate
   if (!approval || approval.decision !== "approved" || approval.reviewed_redacted_artifact_digest !== candidate.redacted_artifact_digest) {
     throw Object.assign(new Error("Candidate needs an explicit approval bound to the reviewed redacted artifact"), { code: "NEEDS_INPUT" });
   }
-  if (input.evaluation.skill_digest !== candidate.skill_digest) throw Object.assign(new Error("Evaluation skill digest does not match the candidate"), { code: "EVALUATION_FAILED" });
-  if (input.scenario.failure_codes.some((code) => !candidate.failure_codes.includes(code))) throw Object.assign(new Error("Scenario introduces an unapproved failure class"), { code: "PRIVACY_DENIED" });
+  if (input.scenario.failure_codes.some((code) => !candidate.failure_codes.includes(code))) {
+    throw Object.assign(new Error("Scenario introduces an unapproved failure class"), { code: "PRIVACY_DENIED" });
+  }
   return candidate;
 }
 
+function verifyEvaluation(
+  loaded: { artifact: EvalEvidenceArtifact; artifactDigest: string },
+  input: TuneInput,
+  candidate: EvalCandidate,
+): VerifiedEvaluation {
+  const { artifact, artifactDigest } = loaded;
+  if (artifactDigest !== input.evaluation.artifact_digest || artifact.candidate_digest !== input.candidate_digest) {
+    throw Object.assign(new Error("Evaluation artifact is not bound to the approved candidate"), { code: "EVALUATION_FAILED" });
+  }
+  const evidence = artifact.evidence;
+  if (evidence.status !== "COMPARABLE" || !object(evidence.comparison_identity)
+    || evidence.comparison_identity.skill_digest !== candidate.skill_digest) {
+    throw Object.assign(new Error("Evaluation does not compare the approved skill digest"), { code: "EVALUATION_FAILED" });
+  }
+  const onPassRate = evidence.skill_on_pass_rate;
+  const offPassRate = evidence.skill_off_pass_rate;
+  const utilityLift = evidence.utility_lift;
+  const verifiedLift = evidence.verified_success_lift;
+  if (typeof onPassRate !== "number" || typeof offPassRate !== "number" || onPassRate < offPassRate
+    || typeof utilityLift !== "number" || utilityLift < 0
+    || typeof verifiedLift !== "number" || verifiedLift < 0
+    || !object(evidence.trials_per_case) || !(input.scenario.scenario_id in evidence.trials_per_case)
+    || !Array.isArray(evidence.pairs)) {
+    throw Object.assign(new Error("Evaluation did not meet non-regression thresholds"), { code: "EVALUATION_FAILED" });
+  }
+  const scenarioPairs = evidence.pairs.filter((pair) => object(pair) && pair.case_id === input.scenario.scenario_id);
+  const expectedPairCount = evidence.trials_per_case[input.scenario.scenario_id];
+  if (typeof expectedPairCount !== "number" || scenarioPairs.length !== expectedPairCount || scenarioPairs.length === 0
+    || !scenarioPairs.every((pair) => {
+      if (!object(pair) || !object(pair.skill_on) || !object(pair.skill_off)) return false;
+      return pair.skill_on.passed === true && pair.skill_on.verified_success === true
+        && typeof pair.skill_on.utility === "number" && typeof pair.skill_off.utility === "number"
+        && pair.skill_on.utility >= pair.skill_off.utility;
+    })) {
+    throw Object.assign(new Error("Selected scenario lacks passing non-regressive evidence"), { code: "EVALUATION_FAILED" });
+  }
+  return { artifact, artifactDigest, comparisonSkillDigest: String(evidence.comparison_identity.skill_digest) };
+}
+
+async function ensureRegularDirectory(path: string): Promise<void> {
+  try { await mkdir(path, { mode: 0o700 }); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  const metadata = await lstat(path);
+  if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+    throw Object.assign(new Error("Private overlay directory is unsafe"), { code: "PRIVACY_DENIED" });
+  }
+}
+
+async function assertRegularDirectoryIfPresent(path: string): Promise<boolean> {
+  try {
+    const metadata = await lstat(path);
+    if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+      throw Object.assign(new Error("Private overlay directory is unsafe"), { code: "PRIVACY_DENIED" });
+    }
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function readRegularFile(path: string): Promise<{ bytes: string; existed: boolean }> {
+  try {
+    const metadata = await lstat(path);
+    if (metadata.isSymbolicLink() || !metadata.isFile()) throw Object.assign(new Error("Private overlay target is unsafe"), { code: "PRIVACY_DENIED" });
+    return { bytes: await readFile(path, "utf8"), existed: true };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { bytes: "", existed: false };
+    throw error;
+  }
+}
+
 async function withLock<T>(root: string, operation: () => Promise<T>): Promise<T> {
+  await ensureRegularDirectory(root);
   const lock = join(root, ".tune-lock");
   try { await mkdir(lock); } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") throw Object.assign(new Error("Another tuning writer is active"), { code: "TEMPORARY_FAILURE" });
@@ -74,17 +165,46 @@ async function withLock<T>(root: string, operation: () => Promise<T>): Promise<T
   try { return await operation(); } finally { await rm(lock, { recursive: true, force: true }); }
 }
 
+async function preserveSnapshot(root: string, digest: string, bytes: string): Promise<string> {
+  const history = resolveContainedPath(root, join(root, "history"));
+  const snapshots = resolveContainedPath(root, join(history, "snapshots"));
+  await ensureRegularDirectory(history);
+  await ensureRegularDirectory(snapshots);
+  const path = resolveContainedPath(root, join(snapshots, `${digest}.bin`));
+  const existing = await readRegularFile(path);
+  if (existing.existed) {
+    if (contentDigest(existing.bytes) !== digest) throw Object.assign(new Error("Existing tuning snapshot failed its digest check"), { code: "PRIVACY_DENIED" });
+  } else {
+    await atomicWrite(path, bytes);
+  }
+  return path;
+}
+
+async function appendTuneJournal(root: string, record: Record<string, unknown>): Promise<void> {
+  const history = resolveContainedPath(root, join(root, "history"));
+  await ensureRegularDirectory(history);
+  const path = resolveContainedPath(root, join(history, "tune-changes.jsonl"));
+  const current = await readRegularFile(path);
+  await atomicWrite(path, `${current.bytes}${canonicalJson(record)}\n`);
+}
+
 export async function executeTuneCommand(arguments_: CliArguments, io: CommandIo): Promise<CommandExecution> {
   try {
     const input = await readInput(arguments_, io);
-    const state = await loadRetentionState(arguments_.stateRoot ?? DEFAULT_EVENT_STATE_ROOT);
+    const eventStateRoot = arguments_.stateRoot ?? DEFAULT_EVENT_STATE_ROOT;
+    const state = await loadRetentionState(eventStateRoot);
     const candidate = approvedCandidate(state.candidates, state.approvals, input);
+    const verified = verifyEvaluation(await loadEvalEvidenceArtifact(eventStateRoot, input.evaluation.evidence_id), input, candidate);
     const root = normalizeAbsolutePath(arguments_.config ?? join(homedir(), ".pragman"));
     const skillAlias = candidate.skill_id.replaceAll(":", "--");
     if (!/^[a-z0-9-]+$/.test(skillAlias)) throw Object.assign(new Error("Skill identity is unsafe for an overlay"), { code: "PRIVACY_DENIED" });
-    const target = resolveContainedPath(root, join(root, "overlays", skillAlias, "eval-candidates.jsonl"));
-    let current = "";
-    try { current = await readFile(target, "utf8"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    const overlays = resolveContainedPath(root, join(root, "overlays"));
+    const skillDirectory = resolveContainedPath(root, join(overlays, skillAlias));
+    const rootExists = await assertRegularDirectoryIfPresent(root);
+    const overlaysExist = rootExists && await assertRegularDirectoryIfPresent(overlays);
+    if (overlaysExist) await assertRegularDirectoryIfPresent(skillDirectory);
+    const target = resolveContainedPath(root, join(skillDirectory, "eval-candidates.jsonl"));
+    const current = await readRegularFile(target);
     const entry = {
       schema_version: 1,
       candidate_id: candidate.candidate_id,
@@ -92,26 +212,64 @@ export async function executeTuneCommand(arguments_: CliArguments, io: CommandIo
       skill_id: candidate.skill_id,
       skill_digest: candidate.skill_digest,
       scenario: input.scenario,
-      evaluation_evidence_digest: input.evaluation.evidence_digest,
+      evaluation_artifact_id: verified.artifact.evidence_id,
+      evaluation_artifact_digest: verified.artifactDigest,
       approval_status: "approved",
     };
-    if (current.split("\n").filter(Boolean).some((line) => (JSON.parse(line) as { candidate_id?: string }).candidate_id === candidate.candidate_id)) {
-      throw Object.assign(new Error("Candidate already exists in this private overlay"), { code: "STALE_PREVIEW" });
+    try {
+      if (current.bytes.split("\n").filter(Boolean).some((line) => (JSON.parse(line) as { candidate_id?: string }).candidate_id === candidate.candidate_id)) {
+        throw Object.assign(new Error("Candidate already exists in this private overlay"), { code: "STALE_PREVIEW" });
+      }
+    } catch (error) {
+      if ((error as { code?: string }).code === "STALE_PREVIEW") throw error;
+      throw Object.assign(new Error("Private overlay is invalid"), { code: "PRIVACY_DENIED" });
     }
-    const next = `${current}${canonicalJson(entry)}\n`;
+    const next = `${current.bytes}${canonicalJson(entry)}\n`;
     const previewDigest = contentDigest(next);
+    const baseDigest = contentDigest(current.bytes);
     const preview = {
       mutated: false, target_alias: `private-overlay:${skillAlias}`, candidate_id: candidate.candidate_id,
-      candidate_digest: input.candidate_digest, scenario: input.scenario, evaluation: { status: "COMPARABLE", passed: true, evidence_digest: input.evaluation.evidence_digest },
-      base_digest: contentDigest(current), preview_digest: previewDigest, approval_classes: ["private-overlay-write"],
+      candidate_digest: input.candidate_digest, scenario: input.scenario,
+      evaluation: { status: "COMPARABLE", passed: true, evidence_id: verified.artifact.evidence_id, artifact_digest: verified.artifactDigest },
+      base_digest: baseDigest, preview_digest: previewDigest, approval_classes: ["private-overlay-write"],
     };
-    if (!arguments_.applyDigest) return { exitCode: EXIT_CODES.success, envelope: successEnvelope("tune", preview), human: `Tuning preview ${previewDigest}; a second approval is required.`, stderr: false };
+    if (!arguments_.applyDigest) {
+      return { exitCode: EXIT_CODES.success, envelope: successEnvelope("tune", preview), human: `Tuning preview ${previewDigest}; a second approval is required.`, stderr: false };
+    }
     if (arguments_.applyDigest !== previewDigest) throw Object.assign(new Error("Tune preview digest is stale"), { code: "STALE_PREVIEW" });
     await withLock(root, async () => {
-      let latest = "";
-      try { latest = await readFile(target, "utf8"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-      if (contentDigest(latest) !== preview.base_digest) throw Object.assign(new Error("Private overlay changed after preview"), { code: "STALE_PREVIEW" });
+      await ensureRegularDirectory(overlays);
+      await ensureRegularDirectory(skillDirectory);
+      const latest = await readRegularFile(target);
+      if (latest.existed !== current.existed || contentDigest(latest.bytes) !== baseDigest) {
+        throw Object.assign(new Error("Private overlay changed after preview"), { code: "STALE_PREVIEW" });
+      }
+      await preserveSnapshot(root, baseDigest, current.bytes);
       await atomicWrite(target, next);
+      const appliedAt = new Date().toISOString();
+      const record = {
+        schema_version: 1,
+        change_id: `tune-${candidate.candidate_id}`,
+        candidate_id: candidate.candidate_id,
+        candidate_digest: input.candidate_digest,
+        target_alias: `private-overlay:${skillAlias}`,
+        base_existed: current.existed,
+        base_digest: baseDigest,
+        preview_digest: previewDigest,
+        evidence_id: verified.artifact.evidence_id,
+        evidence_digest: verified.artifactDigest,
+        comparison_skill_digest: verified.comparisonSkillDigest,
+        approved_by: "local-user",
+        applied_at: appliedAt,
+        rollback: { available: true, snapshot_ref: baseDigest, rolled_back_at: null },
+      };
+      try {
+        await appendTuneJournal(root, record);
+      } catch (error) {
+        if (current.existed) await atomicWrite(target, current.bytes);
+        else await rm(target, { force: true });
+        throw error;
+      }
     });
     return { exitCode: EXIT_CODES.success, envelope: successEnvelope("tune", { ...preview, mutated: true }), human: `Applied approved candidate ${candidate.candidate_id} to a private overlay.`, stderr: false };
   } catch (error) {
