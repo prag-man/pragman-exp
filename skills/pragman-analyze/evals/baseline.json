@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-analyze",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-off",
+  "privacy": "sanitized",
+  "scenarios": [
+    {"scenario_id":"successful-work","prompt":"Analyze a release that shipped successfully but took longer than expected.","observed_failures":["Ignored successful practices","Equated elapsed time with waste","Produced generic speed advice without evidence"]},
+    {"scenario_id":"drifted-work","prompt":"Analyze a task that expanded across sessions and required repeated corrections.","observed_failures":["Listed symptoms without root causes","Did not distinguish scope drift from legitimate discovery","Omitted confidence and evidence references"]},
+    {"scenario_id":"blocked-work","prompt":"Analyze a workflow blocked by credentials and provider limitations, then improve it.","observed_failures":["Blamed the provider without comparable evidence","Treated temporary wait time as a final outcome","Changed configuration without approval"]}
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pragman Analyze"
+  short_description: "Turn evidence into reusable operating learning"
+  default_prompt: "Use $pragman-analyze to explain what happened, what to preserve, and what to change next."

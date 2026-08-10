@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+  <title>Decision prototype</title>
+  <style>
+    :root{color-scheme:light;--ink:#171710;--paper:#f2efe5;--signal:#e34b32;--line:#b8b29f}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font:18px/1.5 Georgia,serif}a{color:inherit}.skip{position:absolute;top:-4rem;left:1rem;background:var(--ink);color:var(--paper);padding:.7rem}.skip:focus{top:1rem}header,main,aside,footer{padding:clamp(1.25rem,5vw,5rem)}header{min-height:55vh;display:grid;align-content:end;border-bottom:1px solid var(--line)}h1{max-width:10ch;font-size:clamp(3rem,10vw,8rem);line-height:.85;letter-spacing:-.06em}section{min-height:60vh;padding:5rem 0;border-bottom:1px solid var(--line)}.action,button{display:inline-block;margin:.5rem .5rem 0 0;padding:.8rem 1rem;border:1px solid var(--ink);background:transparent;color:inherit;font:700 .8rem Arial,sans-serif;text-transform:uppercase;letter-spacing:.1em;text-decoration:none}.action:hover,.action:focus-visible,button:hover,button:focus-visible,button[aria-pressed=true]{background:var(--ink);color:var(--paper)}.signal{color:var(--signal)}output{display:block;min-height:1.5rem;margin-top:1rem}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+  </style>
+</head>
+<body>
+  <a class="skip" href="#flow">Skip to prototype</a>
+  <header><p class="signal">Disposable decision artifact</p><h1>Replace with the decision</h1><p>State the user, uncertainty, and smallest flow this artifact tests.</p></header>
+  <main id="flow"><section id="start"><h2>Start</h2><p>Use synthetic, escaped content.</p><a class="action" href="#outcome">Continue</a></section><section id="outcome"><h2>Outcome</h2><p>Show the consequence that makes the decision testable.</p><a class="action" href="#start">Try again</a></section></main>
+  <aside aria-label="Prototype feedback"><h2>What should happen next?</h2><button type="button" data-feedback="Keep">Keep</button><button type="button" data-feedback="Change">Change</button><button type="button" data-feedback="Stop">Stop</button><output id="feedback" aria-live="polite"></output></aside>
+  <footer>Prototype—not production code. No network requests or external assets.</footer>
+  <script>document.querySelectorAll('[data-feedback]').forEach(function(button){button.addEventListener('click',function(){document.querySelectorAll('[data-feedback]').forEach(function(item){item.setAttribute('aria-pressed','false')});button.setAttribute('aria-pressed','true');document.getElementById('feedback').textContent='Recorded in this page only: '+button.dataset.feedback;});});</script>
+</body>
+</html>

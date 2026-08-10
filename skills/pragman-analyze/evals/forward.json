@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-analyze",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-on",
+  "privacy": "sanitized",
+  "scenarios": [
+    {"scenario_id":"successful-work","passed":true,"invariants":["Preserves demonstrated strengths","Compares time with value","All eleven dimensions covered","Actions are evidence-bound"]},
+    {"scenario_id":"drifted-work","passed":true,"invariants":["Symptoms and root causes separated","Discovery distinguished from avoidable drift","Material claims carry evidence and confidence","All six action groups present"]},
+    {"scenario_id":"blocked-work","passed":true,"invariants":["Temporary and final states distinguished","External blockers are evidenced","Missing context becomes a question","No automatic mutation"]}
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-prototype",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-on",
+  "privacy": "sanitized",
+  "scenarios": [
+    {"scenario_id":"one-flow","passed":true,"invariants":["Decision and riskiest assumption stated","Smallest complete flow","Artifact visibly marked prototype","No production mutation"]},
+    {"scenario_id":"useful-variants","passed":true,"invariants":["Each variant tests a distinct hypothesis","Trade-offs are explicit","Keep/Change/Stop feedback captured","Approved direction promotes to a shaped contract"]},
+    {"scenario_id":"confidential-context","passed":true,"invariants":["Sensitive sources remain references","Imported text is escaped or synthesized","Self-contained with no network","Local preview and privacy boundary stated"]}
+  ]
+}
