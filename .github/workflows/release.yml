@@ -20,9 +20,16 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-      - name: Verify annotated release tag
+      - name: Verify signed release tag on main
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git cat-file -e "${GITHUB_REF_NAME}^{tag}"
+          git fetch --no-tags origin main
+          TAG_COMMIT="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
+          git merge-base --is-ancestor "$TAG_COMMIT" origin/main
+          TAG_OBJECT="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" --jq .object.sha)"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAG_OBJECT" --jq .verification.verified)" = "true"
       - name: Install trusted-publishing npm CLI
         run: |
           npm install --global npm@11.5.1
@@ -44,12 +51,27 @@ jobs:
         run: |
           PACK_JSON="$(npm pack --json)"
           TARBALL="$(node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync(0,"utf8")); process.stdout.write(value[0].filename)' <<<"$PACK_JSON")"
+          INTEGRITY="$(node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync(0,"utf8")); process.stdout.write(value[0].integrity)' <<<"$PACK_JSON")"
           node scripts/verify-package.mjs "$TARBALL"
           sha256sum "$TARBALL" > checksums-sha256.txt
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
-      - name: Publish with npm trusted publishing
-        run: npm publish "${{ steps.pack.outputs.tarball }}" --access public --provenance
+          echo "integrity=$INTEGRITY" >> "$GITHUB_OUTPUT"
+      - name: Publish with npm trusted publishing or verify an identical retry
+        env:
+          EXPECTED_INTEGRITY: ${{ steps.pack.outputs.integrity }}
+        run: |
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          if REMOTE_INTEGRITY="$(npm view "@prag-man/pragman-exp@$PACKAGE_VERSION" dist.integrity --json 2>/dev/null | tr -d '"')"; then
+            test "$REMOTE_INTEGRITY" = "$EXPECTED_INTEGRITY"
+          else
+            npm publish "${{ steps.pack.outputs.tarball }}" --access public --provenance
+          fi
       - name: Create checksummed GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "${{ steps.pack.outputs.tarball }}" checksums-sha256.txt --verify-tag --generate-notes
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${{ steps.pack.outputs.tarball }}" checksums-sha256.txt --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${{ steps.pack.outputs.tarball }}" checksums-sha256.txt --verify-tag --generate-notes
+          fi
