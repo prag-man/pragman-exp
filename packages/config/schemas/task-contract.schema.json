@@ -4,11 +4,12 @@
   "title": "Pragman immutable task contract",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "route_id", "parent_route_id", "request_digest", "outcome", "lane", "deliverable_kind", "execution_mode", "workspace", "project", "in_scope", "out_of_scope", "assumptions", "unresolved_conflicts", "capabilities", "providers", "provider_assignments", "provider_sequence_policy", "allowed_side_effects", "data_inputs", "effective_sensitivity", "egress_approvals", "proof", "stop_conditions", "created_at"],
+  "required": ["schema_version", "route_id", "parent_route_id", "router_depth", "request_digest", "outcome", "lane", "deliverable_kind", "execution_mode", "workspace", "project", "in_scope", "out_of_scope", "assumptions", "unresolved_conflicts", "capabilities", "providers", "provider_assignments", "provider_sequence_policy", "allowed_side_effects", "data_inputs", "effective_sensitivity", "egress_approvals", "proof", "stop_conditions", "created_at"],
   "properties": {
     "schema_version": { "const": 1 },
     "route_id": { "$ref": "#/$defs/uuidv7" },
     "parent_route_id": { "anyOf": [{ "$ref": "#/$defs/uuidv7" }, { "type": "null" }], "default": null },
+    "router_depth": { "type": "integer", "minimum": 0, "maximum": 3 },
     "request_digest": { "$ref": "#/$defs/sha256" },
     "outcome": { "type": "string", "minLength": 1 },
     "lane": { "enum": ["fast", "standard", "deep", "operational"] },

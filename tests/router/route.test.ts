@@ -12,6 +12,7 @@ test("route resolves personal/workspace/project modes and returns an immutable e
   assert.equal(personal.status, "ready");
   if (personal.status !== "ready") return;
   assert.equal(personal.contextMode, "personal-only");
+  assert.equal(personal.contract.router_depth, 0);
   assert.deepEqual(personal.contract.providers, ["p:all"]);
   assert.deepEqual(personal.contract.provider_assignments, [{ provider_id: "p:all", capabilities: ["plan", "build"] }]);
   assert.ok(Object.isFrozen(personal.contract));

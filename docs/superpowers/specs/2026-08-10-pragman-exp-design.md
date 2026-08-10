@@ -946,10 +946,10 @@ Derived fields are pure: `effective_sensitivity` follows Section 23.1; `data_cat
 
 A validated task contract requires:
 
-- `schema_version`, `route_id`, `parent_route_id`, `request_digest`
+- `schema_version`, `route_id`, `parent_route_id`, `router_depth`, `request_digest`
 - `outcome`, `lane`, `deliverable_kind`, `execution_mode`, nullable `workspace`, nullable `project`
 - `in_scope`, `out_of_scope`, `assumptions`, `unresolved_conflicts`
-- `capabilities`, ordered `providers`, and `provider_sequence_policy`
+- `capabilities`, ordered `providers`, ordered `provider_assignments`, and `provider_sequence_policy`
 - `allowed_side_effects`, `data_inputs`, `effective_sensitivity`, and `egress_approvals`
 - `proof`, `stop_conditions`, and `created_at`
 
@@ -1020,6 +1020,8 @@ Provider sequences default to `stop`: a failed, cancelled, or invalid result sto
 
 Every invocation carries `route_id` and `router_depth`. A provider must pass both to any handoff. Router re-entry with the same route ID returns the existing contract. A new child route is allowed only for a newly discovered subtask, sets `parent_route_id`, increments depth, and stops at depth 3 with `ROUTE_RECURSION`. Cancellation propagates to active providers where the host supports it and always prevents subsequent sequence steps.
 
+Routing and execution are separate lifecycle boundaries. The route command returns `execution_status=not-started` and records `route-ready-not-executed`; selecting a provider is never a successful task outcome. The host orchestration seam projects each ordered `provider_assignment` to an exact bounded adapter contract containing only that provider and its assigned capabilities. `stop` prevents later serial steps after any non-success, `fallback` tries later assignments only while routed capabilities remain unsatisfied, and `continue-independent` executes valid independent fan-out assignments concurrently. A route succeeds only when normalized, verified provider results cover every contract capability. Cancellation reaches all active handles and prevents any later step from starting.
+
 Golden router tests assert exact lane, eligible set, ordered provider IDs, score explanation, approval requirements, and error/fallback state.
 
 ## 25. Provider and host-adapter contracts
@@ -1068,6 +1070,8 @@ Each host adapter implements:
 - `cancel(handle): CancellationResult`
 - `collect(handle): ProviderResult`
 - `sessionSources(selection): SessionSource[]`
+
+Host integrations use `createRouteExecution(...)` (or the one-shot `executeReadyRoute(...)`) rather than invoking adapters directly from a routing result. The execution object owns sequence policy, stable result order, bounded context projection, active-handle cancellation, and aggregate capability coverage. Adapter exceptions and provider/result identity mismatches normalize to failed steps; handoff-required and unverified results remain incomplete.
 
 `boundedContext` contains only the task contract, selected public/internal context summaries, and approved redacted excerpts. It never contains the unrestricted personal profile or raw paths. If a host cannot directly invoke a skill, the adapter uses `prompt-handoff` or returns `HANDOFF_REQUIRED`; it must not claim successful invocation.
 

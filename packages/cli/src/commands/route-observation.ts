@@ -23,7 +23,6 @@ export function routeLifecycleEvents(input: {
   host: HostId;
   hostVersion?: string;
   provider: string | null;
-  status: "succeeded" | "partial" | "failed";
   startedAt: Date;
   finishedAt?: Date;
 }): [SkillEvent, SkillEvent] {
@@ -43,8 +42,8 @@ export function routeLifecycleEvents(input: {
     ...common, event_id: uuidV7(), timestamp: input.startedAt.toISOString(), event_type: "invoked", status: null,
     outcome_code: null, duration_ms: 0,
   }, {
-    ...common, event_id: uuidV7(), timestamp: finishedAt.toISOString(), event_type: "completed", status: input.status,
-    outcome_code: input.status === "succeeded" ? "route-ready" : input.status === "partial" ? "route-partial" : "route-failed",
+    ...common, event_id: uuidV7(), timestamp: finishedAt.toISOString(), event_type: "completed", status: "partial",
+    outcome_code: "route-ready-not-executed",
     duration_ms: Math.max(0, finishedAt.getTime() - input.startedAt.getTime()),
   }];
 }

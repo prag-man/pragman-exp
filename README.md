@@ -94,6 +94,8 @@ pragman events candidates decide
 
 Run `pragman <command> --help` for command-specific inputs. Configuration is layered personal → workspace → project, and one person can create and link multiple isolated workspaces.
 
+`pragman route` returns an immutable route with `execution_status: not-started`; provider selection is not reported as completed work. Host integrations execute that route through `createRouteExecution`/`executeReadyRoute` in `host-adapters/orchestrator`: the seam projects each ordered `provider_assignment` into a bounded adapter contract, applies stop/fallback/independent policies, propagates cancellation, and reports success only when verified provider results cover every routed capability.
+
 ## Privacy, events, and learning
 
 Pragman is local by default. It does not require a hosted account or daemon, store credentials, sync private context to a Pragman service, or silently edit third-party skills. Session sources are treated as untrusted input, selected explicitly, bounded, and redacted before analysis.
