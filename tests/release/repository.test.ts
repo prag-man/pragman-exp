@@ -31,6 +31,7 @@ test("README documents the complete portable surface and operating model", async
   assert.match(readme, /Superpowers/i);
   assert.match(readme, /local by default/i);
   assert.match(readme, /content-free event/i);
+  assert.match(readme, /direct skill use.*not automatically/is);
   assert.match(readme, /skills\.sh/i);
 });
 
