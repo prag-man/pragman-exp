@@ -13,7 +13,7 @@ const SMOKE_PROMPT = [
   "Request: Explain in two sentences why a small local README typo fix is low risk.",
   "You may inspect only the installed pragman-router skill files if the host requires it. Do not browse, change files, load user or workspace context, or contact external services.",
   "This is obvious, bounded, read-only work: do not ask a question.",
-  "End with PRAGMAN_SMOKE followed by one compact JSON object reporting the chosen lane and booleans for whether you interviewed the user, used external egress, or wrote anything. Use keys lane, interview, egress, and writes.",
+  "End with PRAGMAN_SMOKE followed by one compact JSON object reporting the chosen lane and booleans for whether you interviewed the user, used external egress, or wrote anything. Use keys lane, interview, egress, and writes, and use the lowercase lane identifier.",
 ].join("\n");
 
 function fail(message) {
@@ -92,6 +92,7 @@ export function assertCodexTrace(output) {
   for (const line of output.split(/\r?\n/).filter(Boolean)) {
     let record;
     try { record = JSON.parse(line); } catch { continue; }
+    if (record?.type !== "item.completed") continue;
     const item = record && typeof record === "object" ? record.item : null;
     if (!item || typeof item !== "object") continue;
     if (["file_change", "mcp_tool_call", "web_search"].includes(item.type)) {
@@ -100,14 +101,20 @@ export function assertCodexTrace(output) {
     if (item.type !== "command_execution") continue;
     commandCount += 1;
     const command = typeof item.command === "string" ? item.command : "";
-    if (/(?:^|\s)(?:rm|mv|cp|touch|mkdir|rmdir|chmod|chown|tee|truncate|install|git|npm|npx|curl|wget|python|node)\b|&&|\|\||[;|>`]|\$\(/.test(command)
+    const aggregatedOutput = typeof item.aggregated_output === "string" ? item.aggregated_output : "";
+    if (/(?:^|\s)(?:rm|mv|cp|touch|mkdir|rmdir|chmod|chown|tee|truncate|install|git|npm|npx|curl|wget|python|node)\b|&&|\|\||[;|>`]|\$\(|(?:^|[/\s"'])\.\.(?:[/\s"']|$)/.test(command)
       || !/\b(?:sed|cat|head|tail|rg|ls|find|wc)\b/.test(command)) {
       fail("Codex live smoke used a non-read-only command");
     }
-    if (!command.includes("pragman-router")) fail("Codex live smoke inspected content outside pragman-router");
-    if (!/pragman-router\/SKILL\.md/.test(command)) {
-      if (!/pragman-router\/(?:references|assets)\//.test(command)) fail("Codex live smoke inspected content outside pragman-router");
-    } else {
+    const absoluteSkillRead = /(?:\.agents|\.claude)\/skills\/pragman-router\/SKILL\.md/.test(command);
+    const relativeSkillRead = /(?:^|[\s"'])SKILL\.md(?:[\s"']|$)/.test(command)
+      && /(?:^|\n)name:\s*pragman-router(?:\n|$)/.test(aggregatedOutput);
+    const absoluteSupportRead = /(?:\.agents|\.claude)\/skills\/pragman-router\/(?:references|assets)\/[a-z0-9][a-z0-9._/-]*/.test(command);
+    const relativeSupportRead = /(?:^|[\s"'])(?:references|assets)\/[a-z0-9][a-z0-9._/-]*(?:[\s"']|$)/.test(command);
+    if (!absoluteSkillRead && !relativeSkillRead && !absoluteSupportRead && !relativeSupportRead) {
+      fail("Codex live smoke inspected content outside pragman-router");
+    }
+    if (absoluteSkillRead || relativeSkillRead) {
       skillReads += 1;
     }
     if (item.status !== "completed" || item.exit_code !== 0) fail("Codex live smoke skill inspection did not complete cleanly");
