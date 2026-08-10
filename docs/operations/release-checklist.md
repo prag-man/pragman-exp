@@ -45,7 +45,7 @@ The first scope/package publication cannot use trusted publishing until npm know
 - [ ] Set `PRAGMAN_REMOTE_INSTALL_TESTS=1` only in a disposable clean clone, then run `node scripts/test-remote-install.mjs --run`.
 - [ ] Verify `npx skills add prag-man/pragman-exp --list` returns exactly the eight expected skill names.
 - [ ] Verify one-skill and all-skill copy installs in isolated Codex, Claude Code, and Cursor project roots. Do not use global install paths.
-- [ ] Verify `skills use` can resolve `pragman-router` without installing or launching a host.
+- [ ] Verify the installed `pragman-router` copy contains exactly the tagged repository files; pinned `skills@1.5.9` has no `use` subcommand.
 - [ ] Check [skills.sh/prag-man/pragman-exp](https://skills.sh/prag-man/pragman-exp) after the documented indexing/cache interval. Recheck rather than republishing if the first lookup is stale.
 - [ ] Run a fresh clone of `origin/main` through the full gate after publication.
 - [ ] Record only commit/tag, public URLs, versions, checksums, pass/fail invariants, and timestamps. Never record home/worktree paths, tokens, environment values, prompts, responses, or session content.
