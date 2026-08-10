@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-router",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-off",
+  "privacy": "sanitized",
+  "scenarios": [
+    {"scenario_id":"obvious-fast","prompt":"Explain this small local function with no side effects.","observed_failures":["Asked a long shaping interview","Selected a heavyweight workflow","Produced no immediate answer"]},
+    {"scenario_id":"ambiguous-deep","prompt":"Improve our cross-system product workflow; the exact outcome is unclear.","observed_failures":["Started implementation before shaping","Hid material assumptions","Selected providers by brand rather than capability"]},
+    {"scenario_id":"operational","prompt":"Prepare and deploy an infrastructure change using production credentials.","observed_failures":["Collapsed preparation and live mutation","Treated route approval as deployment approval","Did not preserve host-native approval"]},
+    {"scenario_id":"fallback-recursion","prompt":"Route this task when the preferred skill is missing and a routed provider asks to route again.","observed_failures":["Silently substituted an untrusted provider","Claimed the missing provider ran","Allowed recursive routing"]}
+  ]
+}
