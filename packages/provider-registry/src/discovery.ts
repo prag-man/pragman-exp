@@ -19,7 +19,7 @@ export interface DiscoveryRecord {
 }
 
 export interface DiscoveryWarning {
-  code: "INVALID_METADATA" | "METADATA_TOO_LARGE" | "ROOT_LIMIT" | "SKILL_LIMIT" | "SYMLINK_SKIPPED";
+  code: "INVALID_METADATA" | "METADATA_TOO_LARGE" | "ROOT_LIMIT" | "SKILL_LIMIT" | "SYMLINK_SKIPPED" | "INVENTORY_LIMIT";
   path_alias: string;
 }
 
@@ -48,6 +48,8 @@ export interface DiscoveryOptions {
   maximumHosts?: number;
   maximumSkillsPerRoot?: number;
   maximumMetadataBytes?: number;
+  maximumInventoryEntries?: number;
+  maximumInventoryBytes?: number;
 }
 
 const SKILL_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -56,13 +58,83 @@ const DEFAULT_BOUNDS = Object.freeze({
   maximum_skills_per_root: 256,
   maximum_metadata_bytes: 32_768,
 });
-
-function canonicalMetadata(value: { name: string; description: string }): string {
-  return JSON.stringify({ description: value.description, name: value.name });
-}
+const DEFAULT_INVENTORY_BOUNDS = Object.freeze({ maximum_entries: 1_024, maximum_bytes: 8 * 1_024 * 1_024 });
+const COLLECTION_NAMESPACES = new Map([
+  ["compound-engineering", "compound-engineering"],
+  ["gstack", "gstack"],
+  ["superpowers", "superpowers"],
+]);
 
 function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+interface SkillCandidate {
+  directory: string;
+  entryName: string;
+  namespace: string | null;
+}
+
+interface InventoryResult {
+  digest: string;
+  safe: boolean;
+  warning: "SYMLINK_SKIPPED" | "INVENTORY_LIMIT" | null;
+}
+
+async function readBoundedFile(path: string, maximumBytes: number): Promise<Buffer | null> {
+  const handle = await open(path, "r");
+  try {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    while (total <= maximumBytes) {
+      const chunk = Buffer.alloc(Math.min(64 * 1_024, maximumBytes - total + 1));
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+      if (bytesRead === 0) return Buffer.concat(chunks, total);
+      chunks.push(chunk.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+    return null;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function hashSkillInventory(directory: string, maximumEntries: number, maximumBytes: number): Promise<InventoryResult> {
+  const pending = [{ absolute: directory, relative: "" }];
+  const files: Array<{ absolute: string; relative: string; size: number }> = [];
+  let entriesSeen = 0;
+  let bytesSeen = 0;
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    const entries = (await readdir(current.absolute, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      entriesSeen += 1;
+      if (entriesSeen > maximumEntries) return { digest: digest("inventory-limit"), safe: false, warning: "INVENTORY_LIMIT" };
+      const absolute = join(current.absolute, entry.name);
+      const relative = current.relative ? `${current.relative}/${entry.name}` : entry.name;
+      const metadata = await lstat(absolute);
+      if (metadata.isSymbolicLink()) return { digest: digest("inventory-symlink"), safe: false, warning: "SYMLINK_SKIPPED" };
+      if (metadata.isDirectory()) {
+        pending.push({ absolute, relative });
+        continue;
+      }
+      if (!metadata.isFile()) continue;
+      bytesSeen += metadata.size;
+      if (bytesSeen > maximumBytes) return { digest: digest("inventory-limit"), safe: false, warning: "INVENTORY_LIMIT" };
+      files.push({ absolute, relative, size: metadata.size });
+    }
+  }
+  files.sort((left, right) => left.relative.localeCompare(right.relative));
+  const hash = createHash("sha256");
+  for (const file of files) {
+    const contents = await readBoundedFile(file.absolute, Math.min(file.size, maximumBytes));
+    if (contents === null || contents.length !== file.size) return { digest: digest("inventory-limit"), safe: false, warning: "INVENTORY_LIMIT" };
+    hash.update(`${Buffer.byteLength(file.relative, "utf8")}:`);
+    hash.update(file.relative);
+    hash.update(`${contents.length}:`);
+    hash.update(contents);
+  }
+  return { digest: hash.digest("hex"), safe: true, warning: null };
 }
 
 function defaultRoots(homeRoot: string, projectRoot?: string): DiscoveryRoot[] {
@@ -133,6 +205,55 @@ function applyShadowing(records: DiscoveryRecord[]): void {
   }
 }
 
+function candidateIdentity(candidate: SkillCandidate, name: string): string {
+  return candidate.namespace ? `${candidate.namespace}:${name}` : name;
+}
+
+async function collectSkillCandidates(
+  root: DiscoveryRoot,
+  maximumSkills: number,
+  warnings: DiscoveryWarning[],
+): Promise<{ candidates: SkillCandidate[]; truncated: boolean }> {
+  const entries = (await readdir(root.root, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name));
+  const candidates: SkillCandidate[] = [];
+  let truncated = false;
+  const add = (candidate: SkillCandidate): boolean => {
+    if (candidates.length >= maximumSkills) {
+      truncated = true;
+      return false;
+    }
+    candidates.push(candidate);
+    return true;
+  };
+  const selected = entries.slice(0, maximumSkills);
+  if (entries.length > selected.length) truncated = true;
+  for (const entry of selected) {
+    const fallback = SKILL_ID.test(entry.name) ? entry.name : `invalid-${digest(entry.name).slice(0, 12)}`;
+    if (entry.isSymbolicLink()) {
+      warnings.push({ code: "SYMLINK_SKIPPED", path_alias: `${root.source}:${root.install_scope}:${fallback}` });
+      continue;
+    }
+    if (!entry.isDirectory()) continue;
+    const directory = join(root.root, entry.name);
+    if (!add({ directory, entryName: entry.name, namespace: null })) break;
+    const namespace = COLLECTION_NAMESPACES.get(entry.name);
+    if (!namespace) continue;
+    const nested = (await readdir(directory, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name));
+    for (const child of nested) {
+      const childFallback = SKILL_ID.test(child.name) ? child.name : `invalid-${digest(child.name).slice(0, 12)}`;
+      const alias = `${root.source}:${root.install_scope}:${namespace}:${childFallback}`;
+      if (child.isSymbolicLink()) {
+        warnings.push({ code: "SYMLINK_SKIPPED", path_alias: alias });
+        continue;
+      }
+      if (!child.isDirectory()) continue;
+      if (!add({ directory: join(directory, child.name), entryName: child.name, namespace })) break;
+    }
+  }
+  if (truncated) warnings.push({ code: "SKILL_LIMIT", path_alias: `${root.source}:${root.install_scope}:skills-root` });
+  return { candidates, truncated };
+}
+
 export async function discoverKnownHosts(options: DiscoveryOptions = {}): Promise<DiscoveryReport> {
   const bounds = {
     maximum_hosts: options.maximumHosts ?? DEFAULT_BOUNDS.maximum_hosts,
@@ -142,36 +263,32 @@ export async function discoverKnownHosts(options: DiscoveryOptions = {}): Promis
   const selectedRoots = [...(options.roots ?? defaultRoots(options.homeRoot ?? homedir(), options.projectRoot))];
   const roots = selectedRoots.slice(0, bounds.maximum_hosts);
   const warnings: DiscoveryWarning[] = [];
+  const inventoryBounds = {
+    maximum_entries: options.maximumInventoryEntries ?? DEFAULT_INVENTORY_BOUNDS.maximum_entries,
+    maximum_bytes: options.maximumInventoryBytes ?? DEFAULT_INVENTORY_BOUNDS.maximum_bytes,
+  };
   let truncated = selectedRoots.length > roots.length;
   if (truncated) warnings.push({ code: "ROOT_LIMIT", path_alias: "known-host-roots" });
   const installations: DiscoveryRecord[] = [];
 
   for (const root of roots) {
-    let entries;
     try {
       const rootMetadata = await lstat(root.root);
       if (rootMetadata.isSymbolicLink()) {
         warnings.push({ code: "SYMLINK_SKIPPED", path_alias: `${root.source}:${root.install_scope}:skills-root` });
         continue;
       }
-      entries = await readdir(root.root, { withFileTypes: true });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw error;
     }
-    const selected = entries.sort((left, right) => left.name.localeCompare(right.name)).slice(0, bounds.maximum_skills_per_root);
-    if (entries.length > selected.length) {
-      truncated = true;
-      warnings.push({ code: "SKILL_LIMIT", path_alias: `${root.source}:${root.install_scope}:skills-root` });
-    }
-    for (const entry of selected) {
-      const fallbackId = SKILL_ID.test(entry.name) ? entry.name : `invalid-${digest(entry.name).slice(0, 12)}`;
-      const pathAlias = `${root.source}:${root.install_scope}:${fallbackId}`;
-      if (!entry.isDirectory() || entry.isSymbolicLink()) {
-        if (entry.isSymbolicLink()) warnings.push({ code: "SYMLINK_SKIPPED", path_alias: pathAlias });
-        continue;
-      }
-      const metadataPath = join(root.root, entry.name, "SKILL.md");
+    const collected = await collectSkillCandidates(root, bounds.maximum_skills_per_root, warnings);
+    if (collected.truncated) truncated = true;
+    for (const candidate of collected.candidates) {
+      const fallbackId = SKILL_ID.test(candidate.entryName) ? candidate.entryName : `invalid-${digest(candidate.entryName).slice(0, 12)}`;
+      const fallbackIdentity = candidateIdentity(candidate, fallbackId);
+      const pathAlias = `${root.source}:${root.install_scope}:${fallbackIdentity}`;
+      const metadataPath = join(candidate.directory, "SKILL.md");
       try {
         const metadata = await lstat(metadataPath);
         if (!metadata.isFile() || metadata.isSymbolicLink()) {
@@ -180,17 +297,22 @@ export async function discoverKnownHosts(options: DiscoveryOptions = {}): Promis
         }
         const prefix = await readMetadataPrefix(metadataPath, bounds.maximum_metadata_bytes);
         const parsed = prefix.tooLarge ? null : parseSkillMetadata(prefix.text);
-        const skillId = parsed?.name ?? fallbackId;
+        const skillId = candidateIdentity(candidate, parsed?.name ?? fallbackId);
         const alias = `${root.source}:${root.install_scope}:${skillId}`;
-        const valid = parsed !== null && parsed.name === entry.name;
+        const valid = parsed !== null && parsed.name === candidate.entryName;
+        const inventory = await hashSkillInventory(candidate.directory, inventoryBounds.maximum_entries, inventoryBounds.maximum_bytes);
+        if (!inventory.safe && inventory.warning) {
+          warnings.push({ code: inventory.warning, path_alias: alias });
+          if (inventory.warning === "INVENTORY_LIMIT") truncated = true;
+        }
         installations.push({
           source: root.source,
           skill_id: skillId,
           version: "unknown",
           install_scope: root.install_scope,
           path_alias: alias,
-          digest: digest(parsed ? canonicalMetadata(parsed) : prefix.text),
-          health: valid ? "healthy" : "degraded",
+          digest: inventory.digest,
+          health: valid && inventory.safe ? "healthy" : "degraded",
           shadowed_by: null,
         });
         if (!valid) warnings.push({ code: prefix.tooLarge ? "METADATA_TOO_LARGE" : "INVALID_METADATA", path_alias: alias });
