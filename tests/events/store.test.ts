@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { open, readFile, realpath, symlink, unlink, writeFile } from "node:fs/promises";
 import { channel } from "node:diagnostics_channel";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { after, beforeEach, test } from "node:test";
 
@@ -168,6 +168,54 @@ test("rejects the filesystem root as a state root", async () => {
   await assert.rejects(appendDurable("/", "skill-events", event()), { code: "UNSAFE_STATE_ROOT" });
 });
 
+test("claims an empty event state root with a durable ownership marker", async () => {
+  const resolvedRoot = await resolveStateRoot(root);
+  const marker = JSON.parse(await readFile(join(resolvedRoot, ".pragman-events-state.json"), "utf8"));
+
+  assert.deepEqual(marker, {
+    schema_version: 1,
+    owner: "@prag-man/pragman-exp",
+    purpose: "event-state-root",
+  });
+});
+
+test("rejects broad roots before claiming them", async () => {
+  for (const broadRoot of [homedir(), tmpdir(), process.cwd()]) {
+    await assert.rejects(resolveStateRoot(broadRoot), { code: "UNSAFE_STATE_ROOT" });
+  }
+});
+
+test("rejects a non-empty unowned root without changing its contents", async () => {
+  const sentinel = join(root, "customer-data.txt");
+  await writeFile(sentinel, "keep me", "utf8");
+
+  await assert.rejects(resolveStateRoot(root), { code: "UNSAFE_STATE_ROOT" });
+  assert.equal(await readFile(sentinel, "utf8"), "keep me");
+  assert.deepEqual(await readdir(root), ["customer-data.txt"]);
+});
+
+test("claims a recognizable markerless legacy event store in place", async () => {
+  await mkdir(join(root, "skill-events"));
+  await writeFile(join(root, "skill-events", "2026-08-10.jsonl"), `${canonicalJson(event())}\n`, "utf8");
+
+  assert.equal(await resolveStateRoot(root), await realpath(root));
+  assert.equal(JSON.parse(await readFile(join(root, ".pragman-events-state.json"), "utf8")).purpose, "event-state-root");
+  assert.equal((await appendDurable(root, "skill-events", event())).status, "duplicate");
+});
+
+test("does not migrate legacy-shaped roots with foreign files in a destructive target", async () => {
+  for (const directory of ["skill-events", "scores", "eval-candidates", "candidate-approvals", "quarantine"]) {
+    await mkdir(join(root, directory));
+  }
+  await mkdir(join(root, "rollups", "daily"), { recursive: true });
+  await mkdir(join(root, "rollups", "weekly"), { recursive: true });
+  const sentinel = join(root, "quarantine", "customer-data.txt");
+  await writeFile(sentinel, "keep me", "utf8");
+
+  await assert.rejects(resolveStateRoot(root), { code: "UNSAFE_STATE_ROOT" });
+  assert.equal(await readFile(sentinel, "utf8"), "keep me");
+});
+
 test("rejects invalid partitions and records that do not match their durable type", async () => {
   await assert.rejects(resolvePartitionPath(root, "skill-events", "2026-02-31"), {
     code: "INVALID_PARTITION_DATE",
@@ -235,6 +283,7 @@ test("writes one canonical JSON record per line for every durable record type", 
 });
 
 test("syncs a durable append before returning", async () => {
+  await resolveStateRoot(root);
   const probePath = join(root, "sync-probe");
   const probe = await open(probePath, "w");
   const prototype = Object.getPrototypeOf(probe) as { sync: () => Promise<void> };
@@ -587,6 +636,7 @@ test("a corrupt affected shard is rebuilt from the append-only partition", async
 });
 
 test("provides a concrete local dependency adapter for bounded observers", async () => {
+  await resolveStateRoot(root);
   const probe = await open(join(root, "best-effort-sync-probe"), "w");
   const prototype = Object.getPrototypeOf(probe) as { sync: () => Promise<void> };
   const originalSync = prototype.sync;

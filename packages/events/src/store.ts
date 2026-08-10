@@ -287,8 +287,8 @@ export async function recoverEventStateReplacement(
     throw new EventStoreError("PATH_ESCAPE");
   }
   const transactionRoot = await resolveContainedDirectory(root, "transactions", marker.transaction_id);
-  const nextRoot = await resolveContainedDirectory(transactionRoot, "transactions", "next");
-  const backupRoot = await resolveContainedDirectory(transactionRoot, "transactions", "backup");
+  const nextRoot = await resolveContainedDirectory(root, "transactions", marker.transaction_id, "transactions", "next");
+  const backupRoot = await resolveContainedDirectory(root, "transactions", marker.transaction_id, "transactions", "backup");
   let completedSwaps = 0;
   for (const target of EVENT_STATE_REPLACEMENT_TARGETS) {
     await assertSafeReplacementTarget(root, target);

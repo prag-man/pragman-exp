@@ -158,6 +158,25 @@ test("raw export and destructive purge expose preview approval boundaries", asyn
   assert.match(JSON.parse(purge.stdout).data.preview_digest, /^[a-f0-9]{64}$/);
 });
 
+test("destructive event commands reject an unowned state root and preserve colliding directories", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pragman-cli-unowned-state-"));
+  const sentinel = join(root, "rollups", "daily", "customer-data.txt");
+  await mkdir(join(root, "rollups", "daily"), { recursive: true });
+  await writeFile(sentinel, "keep me", "utf8");
+
+  for (const arguments_ of [
+    ["events", "rebuild", "--from", "2026-01-01", "--through", "2026-01-31"],
+    ["events", "purge", "--class", "all", "--from", "2026-01-01", "--through", "2026-01-31"],
+  ]) {
+    const result = spawnSync(process.execPath, [cli, ...arguments_, "--state-root", root, "--json"], { encoding: "utf8" });
+    assert.equal(result.status, 5, `${arguments_.join(" ")}\n${result.stderr}`);
+    assert.equal(JSON.parse(result.stdout).error.code, "PRIVACY_DENIED");
+  }
+
+  assert.equal(await readFile(sentinel, "utf8"), "keep me");
+  assert.deepEqual(await readdir(root), ["rollups"]);
+});
+
 test("privacy-bearing event input uses the denial exit class", async () => {
   const root = await mkdtemp(join(tmpdir(), "pragman-cli-privacy-"));
   const result = spawnSync(process.execPath, [cli, "events", "record", "--state-root", root, "--json"], {
@@ -244,6 +263,26 @@ test("an interrupted cross-class replacement is recovered before the next read",
   assert.equal(recovered.status, 0, recovered.stderr);
   assert.deepEqual(await readdir(join(root, "rollups", "daily")), []);
   assert.deepEqual(await readdir(join(root, "rollups", "weekly")), []);
+});
+
+test("a markerless legacy replacement transaction is recovered after the root is claimed", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pragman-cli-legacy-replacement-"));
+  await writeRollupFixture(root);
+  const transactionId = "018f5b8c-7f2d-7a51-a9c0-1d4cb73b10ab";
+  const targets = ["skill-events", "scores", "eval-candidates", "candidate-approvals", "quarantine", "rollups"];
+  const transactionRoot = join(root, "transactions", transactionId, "transactions");
+  for (const target of targets) await mkdir(join(transactionRoot, "next", target), { recursive: true });
+  await mkdir(join(transactionRoot, "backup"), { recursive: true });
+  await writeFile(join(root, "transactions", "active-replacement.json"), JSON.stringify({
+    schema_version: 1,
+    transaction_id: transactionId,
+    targets,
+  }));
+
+  const recovered = spawnSync(process.execPath, [cli, "events", "list", "--state-root", root, "--json"], { encoding: "utf8" });
+  assert.equal(recovered.status, 0, recovered.stderr);
+  assert.equal(JSON.parse(recovered.stdout).ok, true);
+  await assert.rejects(readFile(join(root, "transactions", "active-replacement.json"), "utf8"), { code: "ENOENT" });
 });
 
 test("events summary applies shortened automatic retention after sealing daily and recomputing weekly rollups", async () => {
