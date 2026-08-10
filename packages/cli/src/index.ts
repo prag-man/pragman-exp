@@ -5,6 +5,9 @@ import { errorEnvelope, EXIT_CODES, successEnvelope } from "./envelope.ts";
 import { executeEventsCommand, type CommandExecution, type CommandIo } from "./commands/events.ts";
 import { executeEvalCommand } from "./commands/eval.ts";
 import { executeWorkspaceCommand } from "./commands/workspace.ts";
+import { executeInitCommand } from "./commands/init.ts";
+import { executeScanCommand } from "./commands/scan.ts";
+import { executeDoctorCommand } from "./commands/doctor.ts";
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -102,7 +105,13 @@ export async function runCli(
     ? await executeEventsCommand(arguments_, io)
     : arguments_.command.startsWith("workspace.")
       ? await executeWorkspaceCommand(arguments_, io)
-      : await executeEvalCommand(arguments_, io);
+      : arguments_.command === "init"
+        ? await executeInitCommand(arguments_, io)
+        : arguments_.command === "scan"
+          ? await executeScanCommand(arguments_)
+          : arguments_.command === "doctor"
+            ? await executeDoctorCommand(arguments_)
+            : await executeEvalCommand(arguments_, io);
   render(result, arguments_.json);
   return result.exitCode;
 }

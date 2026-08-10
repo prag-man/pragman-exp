@@ -1,5 +1,6 @@
 export type CliCommand =
   | "version" | "help" | "invalid"
+  | "init" | "scan" | "doctor"
   | "events.record" | "events.score" | "events.list" | "events.summary" | "events.rebuild"
   | "events.export" | "events.purge" | "events.candidates.list" | "events.candidates.decide"
   | "eval.run" | "eval.compare"
@@ -37,6 +38,7 @@ function commandFrom(positionals: readonly string[], version: boolean, help: boo
   if (help && positionals.length === 0) return "help";
   const key = positionals.join(".");
   const commands = new Set<CliCommand>([
+    "init", "scan", "doctor",
     "events.record", "events.score", "events.list", "events.summary", "events.rebuild", "events.export",
     "events.purge", "events.candidates.list", "events.candidates.decide", "eval.run", "eval.compare",
     "workspace.add", "workspace.edit", "workspace.list", "workspace.link", "workspace.unlink", "workspace.validate",
