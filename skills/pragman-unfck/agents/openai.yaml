@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pragman Unfck"
+  short_description: "Repair slow and chaotic agentic workflows"
+  default_prompt: "Use $pragman-unfck to diagnose this workflow from selected session evidence and propose reversible improvements."
