@@ -265,9 +265,8 @@ async function writeReplacementMarker(root: string, marker: ReplacementMarker): 
 
 async function persistStateReplacement(root: string, state: RetentionState): Promise<void> {
   const transactionId = randomUUID();
-  const transactionRoot = await resolveContainedDirectory(root, "transactions", transactionId);
-  const nextRoot = await resolveContainedDirectory(transactionRoot, "transactions", "next");
-  await resolveContainedDirectory(transactionRoot, "transactions", "backup");
+  const nextRoot = await resolveContainedDirectory(root, "transactions", transactionId, "transactions", "next");
+  await resolveContainedDirectory(root, "transactions", transactionId, "transactions", "backup");
   await writeRecordType(join(nextRoot, "skill-events"), state.events);
   await writeRecordType(join(nextRoot, "scores"), state.scores);
   await writeRecordType(join(nextRoot, "eval-candidates"), state.candidates);
