@@ -9,7 +9,9 @@ import { executeInitCommand } from "./commands/init.ts";
 import { executeScanCommand } from "./commands/scan.ts";
 import { executeDoctorCommand } from "./commands/doctor.ts";
 import { executeProvidersCommand } from "./commands/providers.ts";
+import { executeProviderSettingsCommand } from "./commands/provider-settings.ts";
 import { executeRouteCommand } from "./commands/route.ts";
+import { executeTuneCommand } from "./commands/tune.ts";
 import { executeChangesCommand } from "./commands/changes.ts";
 import { executeHistoryPurgeCommand, executeSessionsCommand } from "./commands/sessions.ts";
 import { readFileSync, realpathSync } from "node:fs";
@@ -45,6 +47,17 @@ export function resolvePackageVersion(moduleUrl: string = import.meta.url): stri
 
 const VERSION = resolvePackageVersion();
 
+const COMMANDS = [
+  "init", "scan", "doctor", "route", "tune", "workspace add|edit|list|link|unlink|validate",
+  "providers list|inspect|prefer|trust", "sessions scan|analyze|purge", "changes list|preview|apply|rollback",
+  "history purge", "eval [run|compare]", "events record|score|list|summary|rebuild|export|purge|candidates list|candidates decide",
+];
+
+function helpUsage(target?: string): string {
+  if (target) return `Usage: pragman ${target} [options]\nUse --json for a stable machine-readable envelope.`;
+  return `Usage: pragman <command> [options]\nCommands: ${COMMANDS.join("; ")}\nUse pragman <command> --help for command-specific usage.`;
+}
+
 function writeJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value)}\n`);
 }
@@ -76,13 +89,9 @@ export function run(argv: readonly string[]): number {
     return EXIT_CODES.success;
   }
 
-  if (arguments_.json) {
-    writeJson(successEnvelope("help", {
-      usage: "pragman --version [--json]",
-    }));
-  } else {
-    process.stdout.write("Usage: pragman --version [--json]\n");
-  }
+  const usage = helpUsage(arguments_.helpTarget);
+  if (arguments_.json) writeJson(successEnvelope("help", { usage, command: arguments_.helpTarget ?? null }));
+  else process.stdout.write(`${usage}\n`);
   return EXIT_CODES.success;
 }
 
@@ -115,10 +124,14 @@ export async function runCli(
           ? await executeScanCommand(arguments_)
       : arguments_.command === "doctor"
             ? await executeDoctorCommand(arguments_)
+            : arguments_.command === "providers.prefer" || arguments_.command === "providers.trust"
+              ? await executeProviderSettingsCommand(arguments_, io)
             : arguments_.command.startsWith("providers.")
               ? await executeProvidersCommand(arguments_)
               : arguments_.command === "route"
                 ? await executeRouteCommand(arguments_, io)
+                : arguments_.command === "tune"
+                  ? await executeTuneCommand(arguments_, io)
                 : arguments_.command.startsWith("changes.")
                   ? await executeChangesCommand(arguments_, io)
                   : arguments_.command.startsWith("sessions.")

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/provider-overrides.schema.json",
+  "title": "Pragman private provider preferences and trust bindings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "prefer", "trust"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "prefer": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/providerId" }
+    },
+    "trust": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/trustRecord" }
+    }
+  },
+  "$defs": {
+    "providerId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "trustRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_id", "source", "source_version", "digest", "reviewed_at"],
+      "properties": {
+        "provider_id": { "$ref": "#/$defs/providerId" },
+        "source": { "$ref": "#/$defs/repository" },
+        "source_version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "digest": { "$ref": "#/$defs/sha256" },
+        "reviewed_at": { "type": "string", "format": "date-time", "pattern": "Z$" }
+      }
+    }
+  }
+}

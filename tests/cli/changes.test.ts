@@ -62,3 +62,20 @@ test("changes reject missing approval, invalid patch fields, and stale rollback 
   const rollback = invoke(root, ["changes", "rollback", "--change", applied.change_id, "--apply", rollbackPreview.preview_digest]);
   assert.equal(rollback.status, 5);
 });
+
+test("generic rollback restores provider override changes to providers.yaml", async () => {
+  const root = await fixture();
+  const previewResult = invoke(root, ["providers", "prefer", "--provider", "pragman:shape"]);
+  assert.equal(previewResult.status, 0, previewResult.stderr);
+  const providerPreview = JSON.parse(previewResult.stdout).data;
+  const applied = invoke(root, ["providers", "prefer", "--provider", "pragman:shape", "--apply", providerPreview.preview_digest]);
+  assert.equal(applied.status, 0, applied.stderr);
+  assert.match(await readFile(join(root, "providers.yaml"), "utf8"), /pragman:shape/);
+
+  const [record] = JSON.parse(invoke(root, ["changes", "list"]).stdout).data.changes;
+  assert.equal(record.target_id, "provider-overrides");
+  const rollbackPreview = JSON.parse(invoke(root, ["changes", "rollback", "--change", record.change_id]).stdout).data;
+  const rollback = invoke(root, ["changes", "rollback", "--change", record.change_id, "--apply", rollbackPreview.preview_digest]);
+  assert.equal(rollback.status, 0, rollback.stderr);
+  assert.doesNotMatch(await readFile(join(root, "providers.yaml"), "utf8"), /pragman:shape/);
+});

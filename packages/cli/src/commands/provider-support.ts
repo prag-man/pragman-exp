@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { discoverKnownHosts, type DiscoveryRecord } from "../../../provider-registry/src/discovery.ts";
 import { loadProviderRegistry, type HostId, type ProviderDefinition, type ProviderDiscovery, type ProviderRegistry, type ProviderSideEffect } from "../../../provider-registry/src/index.ts";
+import { loadProviderOverrides, normalizeAbsolutePath } from "../../../config/src/index.ts";
 import type { Capability, Provider, ProviderHealth, ProviderTrust, Sensitivity, SideEffect } from "../../../router/src/index.ts";
 import type { CliArguments } from "../args.ts";
 
@@ -76,18 +77,29 @@ export function mapDiscoveries(records: readonly DiscoveryRecord[], definitions:
   })));
 }
 
-export async function loadRuntimeProviderRegistry(arguments_: CliArguments): Promise<{ registry: ProviderRegistry; host: HostId; warnings: string[] }> {
+export async function loadRuntimeProviderRegistry(arguments_: CliArguments): Promise<{ registry: ProviderRegistry; host: HostId; warnings: string[]; personalPreferences: string[] }> {
   const directory = await bundledProvidersDirectory(arguments_.providersDir);
   const host = activeHost(arguments_);
   const base = await loadProviderRegistry({ directory });
+  const personalRoot = normalizeAbsolutePath(arguments_.config ?? join(homedir(), ".pragman"));
+  const overrides = await loadProviderOverrides(personalRoot);
   const scan = await discoverKnownHosts({ homeRoot: homedir(), ...(arguments_.projectRoot ? { projectRoot: arguments_.projectRoot } : {}) });
   const discoveries = mapDiscoveries(scan.installations.filter((record) => record.health === "healthy" && record.shadowed_by === null), base.listProviders());
+  const definitions = new Map(base.listProviders().map((provider) => [provider.id, provider]));
+  const previousHealth = overrides.trust.flatMap((record) => {
+    const definition = definitions.get(record.provider_id);
+    return definition && definition.source === record.source && definition.source_version === record.source_version
+      ? [{ provider_id: record.provider_id, version: record.source_version, digest: record.digest, health: "healthy" as const }]
+      : [];
+  });
   const registry = await loadProviderRegistry({
     directory,
     discoveries,
+    previous_health: previousHealth,
     ...(arguments_.hostVersion ? { host, host_version: arguments_.hostVersion } : {}),
   });
-  return { registry, host, warnings: scan.warnings.map((warning) => warning.code) };
+  const personalPreferences = overrides.prefer.filter((providerId) => registry.getProvider(providerId) !== null);
+  return { registry, host, warnings: scan.warnings.map((warning) => warning.code), personalPreferences };
 }
 
 function routerHealth(provider: ProviderDefinition, registry: ProviderRegistry): ProviderHealth {

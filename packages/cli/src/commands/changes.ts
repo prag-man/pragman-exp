@@ -7,7 +7,7 @@ import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import personalSchema from "../../../config/schemas/personal-config.schema.json" with { type: "json" };
 import projectSchema from "../../../config/schemas/project.schema.json" with { type: "json" };
 import workspaceSchema from "../../../config/schemas/workspace.schema.json" with { type: "json" };
-import { applyChange, contentDigest, ConfigError, normalizeAbsolutePath, personalConfigPath, previewChange, projectManifestPath, rollbackChange, workspaceConfigPath, type ChangeRecord, type ChangeTarget, type JsonValue, type PatchOperation } from "../../../config/src/index.ts";
+import { applyChange, contentDigest, ConfigError, normalizeAbsolutePath, personalConfigPath, previewChange, projectManifestPath, providerOverridesPath, rollbackChange, workspaceConfigPath, type ChangeRecord, type ChangeTarget, type JsonValue, type PatchOperation } from "../../../config/src/index.ts";
 import type { CliArguments } from "../args.ts";
 import { errorEnvelope, EXIT_CODES, successEnvelope } from "../envelope.ts";
 import type { CommandExecution, CommandIo } from "./events.ts";
@@ -63,6 +63,7 @@ function selection(arguments_: CliArguments, value?: unknown): { target: ChangeT
 
 function targetPath(arguments_: CliArguments, target: ChangeTarget, targetId: string): string {
   const root = stateRoot(arguments_);
+  if (target === "personal" && targetId === "provider-overrides") return providerOverridesPath(root);
   if (target === "personal") return personalConfigPath(root);
   if (target === "workspace") return workspaceConfigPath(root, targetId);
   if (!arguments_.projectRoot) throw Object.assign(new Error("--project-root is required for project changes"), { code: "NEEDS_INPUT" });
