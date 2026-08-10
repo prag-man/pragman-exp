@@ -34,6 +34,9 @@ export function activeHost(arguments_: CliArguments): HostId {
 
 export async function bundledProvidersDirectory(explicit?: string): Promise<string> {
   if (explicit) {
+    if (!process.env.NODE_TEST_CONTEXT) {
+      throw Object.assign(new Error("Provider registry overrides are unavailable outside the test harness"), { code: "INVALID_INPUT" });
+    }
     await access(join(explicit, "capabilities.yaml"));
     return explicit;
   }
@@ -56,35 +59,71 @@ function skillId(provider: ProviderDefinition): string | null {
   return provider.invoke.kind === "native-skill" || provider.invoke.kind === "prompt-handoff" ? provider.invoke.skill_id : null;
 }
 
-/** Host discovery identifies installations; curated definitions supply their source identity and supported version. */
+const CURATED_SOURCE_NAMESPACES = new Map([
+  ["everyinc/compound-engineering-plugin", "compound-engineering"],
+  ["garrytan/gstack", "gstack"],
+  ["obra/superpowers", "superpowers"],
+  ["prag-man/pragman-exp", "pragman"],
+]);
+
+function providerAliases(provider: ProviderDefinition): { exact: string[]; bare: string[] } | null {
+  const id = skillId(provider);
+  const namespace = CURATED_SOURCE_NAMESPACES.get(provider.source);
+  if (!id || !namespace || !id.startsWith(`${namespace}:`)) return null;
+  const name = id.slice(namespace.length + 1);
+  return {
+    exact: [id, ...(namespace === "pragman" ? [`pragman-${name}`] : [])],
+    bare: namespace === "pragman" ? [] : [name],
+  };
+}
+
+function addAlias(index: Map<string, ProviderDefinition[]>, alias: string, provider: ProviderDefinition): void {
+  const values = index.get(alias) ?? [];
+  values.push(provider);
+  index.set(alias, values);
+}
+
+/** Host discovery identifies installations; explicit curated aliases supply repository source identity. */
 export function mapDiscoveries(records: readonly DiscoveryRecord[], definitions: readonly ProviderDefinition[]): ProviderDiscovery[] {
-  const bySkill = new Map<string, ProviderDefinition[]>();
+  const exact = new Map<string, ProviderDefinition[]>();
+  const bare = new Map<string, ProviderDefinition[]>();
   for (const provider of definitions) {
-    const id = skillId(provider);
-    if (!id) continue;
-    const values = bySkill.get(id) ?? [];
-    values.push(provider);
-    bySkill.set(id, values);
+    const aliases = providerAliases(provider);
+    if (!aliases) continue;
+    for (const alias of aliases.exact) addAlias(exact, alias, provider);
+    for (const alias of aliases.bare) addAlias(bare, alias, provider);
   }
-  return records.flatMap((record) => (bySkill.get(record.skill_id) ?? []).map((provider) => ({
-    source: provider.source,
-    skill_id: record.skill_id,
-    version: provider.source_version,
-    install_scope: record.install_scope,
-    path_alias: record.path_alias,
-    digest: record.digest,
-    trust: provider.trust,
-  })));
+  const exactProviderIds = new Set(records.flatMap((record) => {
+    const matches = exact.get(record.skill_id) ?? [];
+    return matches.length === 1 ? [skillId(matches[0]!)!] : [];
+  }));
+  return records.flatMap((record) => {
+    const exactMatches = exact.get(record.skill_id) ?? [];
+    const matches = exactMatches.length > 0 ? exactMatches : bare.get(record.skill_id) ?? [];
+    if (matches.length !== 1) return [];
+    const provider = matches[0]!;
+    if (exactMatches.length === 0 && exactProviderIds.has(skillId(provider)!)) return [];
+    return [{
+      source: provider.source,
+      skill_id: skillId(provider)!,
+      version: provider.source_version,
+      install_scope: record.install_scope,
+      path_alias: record.path_alias,
+      digest: record.digest,
+      trust: provider.trust,
+    }];
+  });
 }
 
 export async function loadRuntimeProviderRegistry(arguments_: CliArguments): Promise<{ registry: ProviderRegistry; host: HostId; warnings: string[]; personalPreferences: string[] }> {
-  const directory = await bundledProvidersDirectory(arguments_.providersDir);
+  const directory = await bundledProvidersDirectory(process.env.NODE_TEST_CONTEXT ? process.env.PRAGMAN_TEST_PROVIDERS_DIR : undefined);
   const host = activeHost(arguments_);
   const base = await loadProviderRegistry({ directory });
   const personalRoot = normalizeAbsolutePath(arguments_.config ?? join(homedir(), ".pragman"));
   const overrides = await loadProviderOverrides(personalRoot);
   const scan = await discoverKnownHosts({ homeRoot: homedir(), ...(arguments_.projectRoot ? { projectRoot: arguments_.projectRoot } : {}) });
-  const discoveries = mapDiscoveries(scan.installations.filter((record) => record.health === "healthy" && record.shadowed_by === null), base.listProviders());
+  const discoveries = mapDiscoveries(scan.installations.filter((record) =>
+    record.source === host && record.health === "healthy" && record.shadowed_by === null), base.listProviders());
   const definitions = new Map(base.listProviders().map((provider) => [provider.id, provider]));
   const previousHealth = overrides.trust.flatMap((record) => {
     const definition = definitions.get(record.provider_id);
@@ -99,23 +138,17 @@ export async function loadRuntimeProviderRegistry(arguments_: CliArguments): Pro
     ...(arguments_.hostVersion ? { host, host_version: arguments_.hostVersion } : {}),
   });
   const personalPreferences = overrides.prefer.filter((providerId) => registry.getProvider(providerId) !== null);
-  return { registry, host, warnings: scan.warnings.map((warning) => warning.code), personalPreferences };
-}
-
-function routerHealth(provider: ProviderDefinition, registry: ProviderRegistry): ProviderHealth {
-  if (provider.trust === "bundled" && provider.source === "prag-man/pragman-exp") return "healthy";
-  return registry.getStatus(provider.id).health;
+  return { registry, host, warnings: [...new Set(scan.warnings.map((warning) => warning.code))], personalPreferences };
 }
 
 export function projectProviderRegistry(registry: ProviderRegistry): { providers: Provider[]; capabilities: Capability[] } {
   const providers = registry.listProviders().map((definition): Provider => {
     const status = registry.getStatus(definition.id);
-    const bundled = definition.trust === "bundled" && definition.source === "prag-man/pragman-exp";
     return {
       id: definition.id,
-      installed: bundled || status.selected_path_alias !== null || definition.invoke.kind === "cli",
+      installed: status.selected_path_alias !== null || definition.invoke.kind === "cli",
       handoffCapable: definition.invoke.kind === "prompt-handoff" || definition.invoke.kind === "manual" || definition.invoke.kind === "cli",
-      health: routerHealth(definition, registry),
+      health: status.health as ProviderHealth,
       compatible: status.health !== "incompatible" && status.health !== "conflict" && status.health !== "quarantined",
       capabilities: [...definition.capabilities],
       hostSupport: [...definition.host_support],
