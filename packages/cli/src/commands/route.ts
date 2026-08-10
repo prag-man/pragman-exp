@@ -6,6 +6,7 @@ import type { CliArguments } from "../args.ts";
 import { errorEnvelope, EXIT_CODES, successEnvelope } from "../envelope.ts";
 import type { CommandExecution, CommandIo } from "./events.ts";
 import { loadRuntimeProviderRegistry, projectProviderRegistry } from "./provider-support.ts";
+import { observeRouteLifecycle, routeLifecycleEvents } from "./route-observation.ts";
 
 const FAMILIES = new Set(["explain", "research", "shape", "prototype", "implement", "debug", "review", "analyze", "operate", "administer"]);
 const DELIVERABLES = new Set(["response-only", "local-artifact", "project-change", "external-action"]);
@@ -49,6 +50,7 @@ function failure(error: unknown): CommandExecution {
 }
 
 export async function executeRouteCommand(arguments_: CliArguments, io: CommandIo): Promise<CommandExecution> {
+  const startedAt = new Date();
   try {
     const input = await readInput(arguments_, io);
     assertRouteInput(input);
@@ -74,7 +76,11 @@ export async function executeRouteCommand(arguments_: CliArguments, io: CommandI
       const human = result.requiredInput ?? result.recommendations?.join(", ") ?? code;
       return { exitCode: EXIT_CODES.needsInput, envelope: errorEnvelope("route", code, human, result), human, stderr: true };
     }
-    return { exitCode: EXIT_CODES.success, envelope: successEnvelope("route", result, warnings), human: `${result.contract.lane} route: ${result.contract.providers.join(" → ") || "native response"}.`, stderr: false };
+    const observationWarnings = await observeRouteLifecycle(arguments_, routeLifecycleEvents({
+      routeId: result.contract.route_id, host, ...(arguments_.hostVersion ? { hostVersion: arguments_.hostVersion } : {}),
+      provider: result.contract.providers[0] ?? null, status: "succeeded", startedAt,
+    }));
+    return { exitCode: EXIT_CODES.success, envelope: successEnvelope("route", result, [...warnings, ...observationWarnings]), human: `${result.contract.lane} route: ${result.contract.providers.join(" → ") || "native response"}.`, stderr: false };
   } catch (error) {
     return failure(error);
   }
