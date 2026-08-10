@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "metric_id": "task-success",
+  "version": "1.0.0",
+  "description": "Whether deterministic verification confirms the task succeeded.",
+  "value_type": "boolean",
+  "boolean_values": [
+    { "value": false, "utility": 0 },
+    { "value": true, "utility": 1 }
+  ],
+  "direction": "maximize",
+  "pass_rule": { "operator": "eq", "value": true },
+  "eligible_score_sources": ["deterministic", "user"],
+  "eligible_verification_codes": ["verified-success"],
+  "lifecycle_policy": {
+    "minimum_trials_per_arm": 3,
+    "minimum_comparable_environments": 2,
+    "minimum_pass_rate": 0.8,
+    "regression_tolerance": 0.05,
+    "material_lift": 0.1,
+    "non_inferiority_margin": 0.02,
+    "efficiency_materiality": {
+      "duration_ms": 100,
+      "retries": 1,
+      "rework_cycles": 1,
+      "tool_calls": 2
+    }
+  }
+}

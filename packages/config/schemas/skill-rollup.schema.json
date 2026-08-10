@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/skill-rollup.schema.json",
+  "title": "Derived Pragman skill measurement rollup",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "rollup_id", "period", "period_start", "period_end", "dimensions", "counts", "sums", "histograms", "score_aggregate", "observation_source_counts", "source_record_count", "source_record_digest", "sealed", "storage_scope"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "rollup_id": { "$ref": "#/$defs/alias" },
+    "period": { "enum": ["daily", "weekly"] },
+    "period_start": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "period_end": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "dimensions": { "$ref": "#/$defs/dimensions" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "sums": { "$ref": "#/$defs/sums" },
+    "histograms": { "$ref": "#/$defs/histograms" },
+    "score_aggregate": { "$ref": "#/$defs/scoreAggregate" },
+    "observation_source_counts": { "$ref": "#/$defs/sourceCounts" },
+    "source_record_count": { "$ref": "#/$defs/counter" },
+    "source_record_digest": { "$ref": "#/$defs/sha256" },
+    "sealed": { "type": "boolean" },
+    "storage_scope": { "const": "local" }
+  },
+  "$defs": {
+    "secretFree": { "type": "string", "not": { "pattern": "(?:sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,})" } },
+    "slug": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }] },
+    "alias": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }] },
+    "namespacedId": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" }] },
+    "providerId": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$" }] },
+    "safeVersion": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$" }] },
+    "safeModel": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$" }] },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "nullableSha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+    "counter": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "nullableSlug": { "oneOf": [{ "$ref": "#/$defs/slug" }, { "type": "null" }] },
+    "dimensions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["skill_id", "skill_version", "skill_digest", "skill_type", "host", "host_version", "model", "model_version", "harness_version", "invocation_mode", "provider", "provider_digest", "event_cohort", "eval_corpus_digest", "trial_policy_digest", "metric_id", "metric_definition_digest", "rubric_digest", "ablation_arm"],
+      "properties": {
+        "skill_id": { "$ref": "#/$defs/namespacedId" },
+        "skill_version": { "$ref": "#/$defs/safeVersion" },
+        "skill_digest": { "$ref": "#/$defs/sha256" },
+        "skill_type": { "enum": ["capability", "preference"] },
+        "host": { "$ref": "#/$defs/slug" },
+        "host_version": { "$ref": "#/$defs/safeVersion" },
+        "model": { "$ref": "#/$defs/safeModel" },
+        "model_version": { "$ref": "#/$defs/safeVersion" },
+        "harness_version": { "$ref": "#/$defs/safeVersion" },
+        "invocation_mode": { "enum": ["model", "user", "router", "host", "eval"] },
+        "provider": { "oneOf": [{ "$ref": "#/$defs/providerId" }, { "type": "null" }] },
+        "provider_digest": { "$ref": "#/$defs/nullableSha256" },
+        "event_cohort": { "$ref": "#/$defs/slug" },
+        "eval_corpus_digest": { "$ref": "#/$defs/nullableSha256" },
+        "trial_policy_digest": { "$ref": "#/$defs/nullableSha256" },
+        "metric_id": { "$ref": "#/$defs/nullableSlug" },
+        "metric_definition_digest": { "$ref": "#/$defs/nullableSha256" },
+        "rubric_digest": { "$ref": "#/$defs/nullableSha256" },
+        "ablation_arm": { "enum": ["skill-on", "skill-off", "production", null] }
+      }
+    },
+    "counts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["eligible", "invoked", "completed", "cancelled", "verified", "incomplete"],
+      "properties": {
+        "eligible": { "$ref": "#/$defs/counter" }, "invoked": { "$ref": "#/$defs/counter" },
+        "completed": { "$ref": "#/$defs/counter" }, "cancelled": { "$ref": "#/$defs/counter" },
+        "verified": { "$ref": "#/$defs/counter" }, "incomplete": { "$ref": "#/$defs/counter" }
+      }
+    },
+    "sums": {
+      "type": "object", "additionalProperties": false,
+      "required": ["duration_ms", "tool_calls", "retries", "rework_cycles", "verification_checks", "verification_passes"],
+      "properties": {
+        "duration_ms": { "$ref": "#/$defs/counter" }, "tool_calls": { "$ref": "#/$defs/counter" },
+        "retries": { "$ref": "#/$defs/counter" }, "rework_cycles": { "$ref": "#/$defs/counter" },
+        "verification_checks": { "$ref": "#/$defs/counter" }, "verification_passes": { "$ref": "#/$defs/counter" }
+      }
+    },
+    "histogram": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/$defs/counter" } },
+    "histograms": {
+      "type": "object", "additionalProperties": false,
+      "required": ["duration_ms", "tool_calls", "retries", "rework_cycles"],
+      "properties": { "duration_ms": { "$ref": "#/$defs/histogram" }, "tool_calls": { "$ref": "#/$defs/histogram" }, "retries": { "$ref": "#/$defs/histogram" }, "rework_cycles": { "$ref": "#/$defs/histogram" } }
+    },
+    "scoreAggregate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["count", "sum", "utility_sum", "pass_count", "correction_count"],
+      "properties": { "count": { "$ref": "#/$defs/counter" }, "sum": { "type": "number", "minimum": -9007199254740991, "maximum": 9007199254740991 }, "utility_sum": { "type": "number", "minimum": 0, "maximum": 9007199254740991 }, "pass_count": { "$ref": "#/$defs/counter" }, "correction_count": { "$ref": "#/$defs/counter" } }
+    },
+    "sourceCounts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["router", "host-adapter", "cli", "eval-runner", "user-report"],
+      "properties": { "router": { "$ref": "#/$defs/counter" }, "host-adapter": { "$ref": "#/$defs/counter" }, "cli": { "$ref": "#/$defs/counter" }, "eval-runner": { "$ref": "#/$defs/counter" }, "user-report": { "$ref": "#/$defs/counter" } }
+    }
+  }
+}

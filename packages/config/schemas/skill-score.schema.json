@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/skill-score.schema.json",
+  "title": "Immutable Pragman skill score",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "score_id", "timestamp", "invocation_id", "metric_id", "metric_definition_digest", "value", "value_type", "source", "grader_id", "grader_version", "rubric_digest", "evidence_digests", "storage_scope"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "score_id": { "$ref": "#/$defs/uuidv7" },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "invocation_id": { "$ref": "#/$defs/uuidv7" },
+    "eval_id": { "$ref": "#/$defs/alias" },
+    "case_id": { "$ref": "#/$defs/alias" },
+    "trial_id": { "$ref": "#/$defs/alias" },
+    "metric_id": { "$ref": "#/$defs/slug" },
+    "metric_definition_digest": { "$ref": "#/$defs/sha256" },
+    "value": { "oneOf": [{ "type": "boolean" }, { "type": "number", "minimum": -9007199254740991, "maximum": 9007199254740991 }, { "$ref": "#/$defs/categoryId" }] },
+    "value_type": { "enum": ["boolean", "number", "category"] },
+    "source": { "enum": ["deterministic", "user", "llm-judge"] },
+    "grader_id": { "$ref": "#/$defs/namespacedId" },
+    "grader_version": { "$ref": "#/$defs/safeVersion" },
+    "rubric_digest": { "$ref": "#/$defs/sha256" },
+    "evidence_digests": { "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/sha256" } },
+    "supersedes_score_id": { "$ref": "#/$defs/uuidv7" },
+    "storage_scope": { "const": "local" }
+  },
+  "$defs": {
+    "secretFree": { "type": "string", "not": { "pattern": "(?:sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,})" } },
+    "slug": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }] },
+    "categoryId": { "$ref": "#/$defs/slug" },
+    "namespacedId": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" }] },
+    "alias": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }] },
+    "safeVersion": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$" }] },
+    "uuidv7": { "type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}
