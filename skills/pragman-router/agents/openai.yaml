@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pragman Router"
+  short_description: "Adaptively route work across installed skills"
+  default_prompt: "Use $pragman-router to shape only what is needed and select the best available capability route."

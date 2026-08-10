@@ -1,0 +1,12 @@
+export { deriveApprovals } from "./approvals.ts";
+export { deriveLane, laneReasons, LANE_RANK } from "./lanes.ts";
+export { applyRoutingRules, deriveRuleFacts, effectiveSensitivity, evaluateExpression } from "./rules.ts";
+export { calculateOutcomeConfidence, compareRankedProviders, rankProviders, TRUST_RANK, WEIGHT_RANK } from "./scoring.ts";
+export { advanceSequence, chooseProviderSequence, createCancellationPlan, resolveCapabilityClosure, selectFallback } from "./sequences.ts";
+export { routeTask } from "./route.ts";
+export { RouterError } from "./types.ts";
+export type * from "./types.ts";
+export type { RouteOptions } from "./route.ts";
+export type { AppliedRules } from "./rules.ts";
+export type { RankProvidersOptions } from "./scoring.ts";
+export type { SequenceState } from "./sequences.ts";

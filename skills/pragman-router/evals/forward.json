@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-router",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-on",
+  "privacy": "sanitized",
+  "scenarios": [
+    {"scenario_id":"obvious-fast","passed":true,"invariants":["Fast lane without interview","Lightest eligible capability","Read-only work proceeds","Compact explanation"]},
+    {"scenario_id":"ambiguous-deep","passed":true,"invariants":["One route-changing question at a time","Deep shaping before execution","Material assumptions disclosed","Capabilities selected before providers"]},
+    {"scenario_id":"operational","passed":true,"invariants":["Operational lane","Preparation separated from live mutation","Credential and target approvals preserved","Minimum task-local context"]},
+    {"scenario_id":"fallback-recursion","passed":true,"invariants":["Missing capability disclosed","Fallback trust/compatibility explicit","No false invocation or success","Route depth bounded"]}
+  ]
+}

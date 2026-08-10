@@ -1,0 +1,37 @@
+[
+  {"id":"fast-1","expected":"fast","input":{"deliverable_kind":"response-only"}},
+  {"id":"fast-2","expected":"fast","input":{"deliverable_kind":"response-only","task_family":"explain"}},
+  {"id":"fast-3","expected":"fast","input":{"deliverable_kind":"response-only","urgency":"urgent"}},
+  {"id":"fast-4","expected":"fast","input":{"deliverable_kind":"response-only","scope_systems":["repo"]}},
+  {"id":"fast-5","expected":"fast","input":{"deliverable_kind":"response-only","downstream_impact":"high"}},
+  {"id":"fast-6","expected":"fast","input":{"deliverable_kind":"response-only","reversibility":"irreversible"}},
+  {"id":"fast-7","expected":"fast","input":{"deliverable_kind":"response-only","task_family":"research"}},
+  {"id":"fast-8","expected":"fast","input":{"deliverable_kind":"response-only","uncertainties":[]}},
+
+  {"id":"standard-1","expected":"standard","input":{"deliverable_kind":"local-artifact"}},
+  {"id":"standard-2","expected":"standard","input":{"deliverable_kind":"project-change"}},
+  {"id":"standard-3","expected":"standard","input":{"deliverable_kind":"external-action"}},
+  {"id":"standard-4","expected":"standard","input":{"deliverable_kind":"response-only","declared_side_effects":["project-file-write"]}},
+  {"id":"standard-5","expected":"standard","input":{"deliverable_kind":"response-only","requested_capabilities":["one","two"]}},
+  {"id":"standard-6","expected":"standard","input":{"deliverable_kind":"response-only","declared_side_effects":["issue-write"]}},
+  {"id":"standard-7","expected":"standard","input":{"deliverable_kind":"response-only","declared_side_effects":["external-message"]}},
+  {"id":"standard-8","expected":"standard","input":{"deliverable_kind":"response-only","declared_side_effects":["pull-request-write"]}},
+
+  {"id":"deep-1","expected":"deep","input":{"scope_systems":["repo","database"]}},
+  {"id":"deep-2","expected":"deep","input":{"estimated_sessions":"multiple"}},
+  {"id":"deep-3","expected":"deep","input":{"uncertainties":[{"id":"u","description":"material","impact":"high"}]}},
+  {"id":"deep-4","expected":"deep","input":{"task_family":"shape","downstream_impact":"high","reversibility":"irreversible"}},
+  {"id":"deep-5","expected":"deep","input":{"scope_systems":["api","web","worker"]}},
+  {"id":"deep-6","expected":"deep","input":{"estimated_sessions":"multiple","deliverable_kind":"project-change"}},
+  {"id":"deep-7","expected":"deep","input":{"uncertainties":[{"id":"u","description":"material","impact":"high"}],"declared_side_effects":["project-file-write"]}},
+  {"id":"deep-8","expected":"deep","input":{"task_family":"shape","downstream_impact":"high","reversibility":"irreversible","requested_capabilities":["one","two"]}},
+
+  {"id":"operational-1","expected":"operational","input":{"declared_side_effects":["credential-use"]}},
+  {"id":"operational-2","expected":"operational","input":{"declared_side_effects":["destructive-action"]}},
+  {"id":"operational-3","expected":"operational","input":{"declared_side_effects":["paid-external-action"]}},
+  {"id":"operational-4","expected":"operational","input":{"declared_side_effects":["production-data-write"]}},
+  {"id":"operational-5","expected":"operational","input":{"declared_side_effects":["external-account-mutation"]}},
+  {"id":"operational-6","expected":"operational","input":{"declared_side_effects":["deployment"]}},
+  {"id":"operational-7","expected":"operational","input":{"declared_side_effects":["live-data-write"]}},
+  {"id":"operational-8","expected":"operational","input":{"scope_systems":["live-infrastructure"]}}
+]
