@@ -1,0 +1,88 @@
+schema_version: 1
+capabilities:
+  - schema_version: 1
+    id: route-work
+    stage: 0
+    depends_on: []
+    result_contract: provider-result-v1
+    description: Produce a transparent deterministic provider route.
+  - schema_version: 1
+    id: shape-task
+    stage: 10
+    depends_on: []
+    result_contract: provider-result-v1
+    description: Turn an ambiguous request into a bounded task contract.
+  - schema_version: 1
+    id: brainstorm-solution
+    stage: 10
+    depends_on: []
+    result_contract: provider-result-v1
+    description: Explore approaches before committing to implementation.
+  - schema_version: 1
+    id: research-evidence
+    stage: 20
+    depends_on: []
+    result_contract: provider-result-v1
+    description: Gather and synthesize attributable evidence.
+  - schema_version: 1
+    id: diagnose-software-failure
+    stage: 20
+    depends_on: []
+    result_contract: provider-result-v1
+    description: Reproduce and determine the root cause of a software failure.
+  - schema_version: 1
+    id: analyze-work-history
+    stage: 20
+    depends_on: []
+    result_contract: provider-result-v1
+    description: Analyze retained work evidence and recommend improvements.
+  - schema_version: 1
+    id: design-interface
+    stage: 30
+    depends_on:
+      - shape-task
+    result_contract: provider-result-v1
+    description: Design a user interface from a bounded task contract.
+  - schema_version: 1
+    id: test-driven-implementation
+    stage: 35
+    depends_on:
+      - shape-task
+    result_contract: provider-result-v1
+    description: Implement behavior through a red-green-refactor loop.
+  - schema_version: 1
+    id: implement-change
+    stage: 40
+    depends_on:
+      - shape-task
+    result_contract: provider-result-v1
+    description: Implement an approved project change.
+  - schema_version: 1
+    id: review-change
+    stage: 60
+    depends_on:
+      - implement-change
+    result_contract: provider-result-v1
+    description: Review a project change for correctness and regressions.
+  - schema_version: 1
+    id: verify-change
+    stage: 70
+    depends_on:
+      - implement-change
+    result_contract: provider-result-v1
+    description: Verify completion claims with fresh evidence.
+  - schema_version: 1
+    id: browser-qa
+    stage: 70
+    depends_on:
+      - implement-change
+    result_contract: provider-result-v1
+    description: Exercise affected browser surfaces and collect evidence.
+  - schema_version: 1
+    id: release-change
+    stage: 80
+    depends_on:
+      - review-change
+      - verify-change
+    result_contract: provider-result-v1
+    description: Prepare and execute an approved release workflow.

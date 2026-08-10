@@ -1,0 +1,45 @@
+schema_version: 1
+providers:
+  - &compound
+    schema_version: 1
+    id: compound-engineering:ce-plan
+    source: everyinc/compound-engineering-plugin
+    source_version: 3.21.4
+    trust: curated
+    capabilities: [shape-task]
+    host_support: [codex, claude-code, cursor]
+    invoke: { kind: native-skill, skill_id: compound-engineering:ce-plan }
+    context_policy: &context
+      accepted_classes: [task-contract, context-summary, redacted-excerpt]
+      maximum_sensitivity: confidential
+      accepts_redacted_excerpts: true
+    side_effects: [read-files]
+    workflow_weight: standard
+    result_contract: provider-result-v1
+    requires: [skill:compound-engineering:ce-plan]
+    strengths: [repo-grounded-planning]
+    best_for: [multi-step-engineering]
+    avoid_when: [one-line-change]
+    compatibility:
+      source_version: ">=3.21.0 <4.0.0"
+      hosts: { codex: ">=1.0.0 <2.0.0", claude-code: ">=1.0.0 <2.0.0", cursor: ">=0.40.0 <1.0.0" }
+    evaluation_confidence: 0.8
+  - <<: *compound
+    id: compound-engineering:ce-work
+    capabilities: [implement-change]
+    invoke: { kind: native-skill, skill_id: compound-engineering:ce-work }
+    side_effects: [read-files, run-commands, project-file-write]
+    workflow_weight: heavy
+    requires: [skill:compound-engineering:ce-work]
+    strengths: [plan-execution, verification]
+    best_for: [approved-implementation-plan]
+    avoid_when: [requirements-unclear]
+  - <<: *compound
+    id: compound-engineering:ce-code-review
+    capabilities: [review-change]
+    invoke: { kind: native-skill, skill_id: compound-engineering:ce-code-review }
+    side_effects: [read-files, run-commands]
+    requires: [skill:compound-engineering:ce-code-review]
+    strengths: [structured-code-review]
+    best_for: [release-review]
+    avoid_when: [no-diff]

@@ -1,0 +1,54 @@
+schema_version: 1
+providers:
+  - &gstack
+    schema_version: 1
+    id: gstack:investigate
+    source: garrytan/gstack
+    source_version: 1.0.0
+    trust: curated
+    capabilities: [diagnose-software-failure]
+    host_support: [codex, claude-code, cursor]
+    invoke: { kind: native-skill, skill_id: gstack:investigate }
+    context_policy: &context
+      accepted_classes: [task-contract, context-summary, redacted-excerpt]
+      maximum_sensitivity: confidential
+      accepts_redacted_excerpts: true
+    side_effects: [read-files, run-commands]
+    workflow_weight: standard
+    result_contract: provider-result-v1
+    requires: [skill:gstack:investigate]
+    strengths: [systematic-root-cause-analysis]
+    best_for: [difficult-reproduction]
+    avoid_when: [explanation-only]
+    compatibility:
+      source_version: ">=1.0.0 <2.0.0"
+      hosts: { codex: ">=1.0.0 <2.0.0", claude-code: ">=1.0.0 <2.0.0", cursor: ">=0.40.0 <1.0.0" }
+    evaluation_confidence: 0.8
+  - <<: *gstack
+    id: gstack:qa
+    capabilities: [browser-qa]
+    invoke: { kind: native-skill, skill_id: gstack:qa }
+    side_effects: [read-files, run-commands]
+    workflow_weight: standard
+    requires: [skill:gstack:qa]
+    strengths: [browser-backed-verification]
+    best_for: [web-application-qa]
+    avoid_when: [no-browser-surface]
+  - <<: *gstack
+    id: gstack:review
+    capabilities: [review-change]
+    invoke: { kind: native-skill, skill_id: gstack:review }
+    requires: [skill:gstack:review]
+    strengths: [pre-landing-review]
+    best_for: [regression-review]
+    avoid_when: [no-code-change]
+  - <<: *gstack
+    id: gstack:ship
+    capabilities: [release-change]
+    invoke: { kind: native-skill, skill_id: gstack:ship }
+    side_effects: [read-files, run-commands, project-file-write, pull-request-write]
+    workflow_weight: heavy
+    requires: [skill:gstack:ship]
+    strengths: [release-orchestration]
+    best_for: [approved-release]
+    avoid_when: [unreviewed-change]

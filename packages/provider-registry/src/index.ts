@@ -1,0 +1,30 @@
+export {
+  ProviderRegistry,
+  ProviderRegistryValidationError,
+  createProviderRegistry,
+  loadProviderRegistry,
+  satisfiesVersionRange,
+} from "./registry.ts";
+
+export type {
+  CapabilityDefinition,
+  ContextClass,
+  CreateProviderRegistryInput,
+  HealthState,
+  HostId,
+  InstallScope,
+  LoadProviderRegistryInput,
+  ProviderCompatibility,
+  ProviderContextPolicy,
+  ProviderDefinition,
+  ProviderDiscovery,
+  ProviderHealthSnapshot,
+  ProviderInvocation,
+  ProviderRegistryIssue,
+  ProviderRegistryStatus,
+  ProviderSideEffect,
+  RequestedCapabilityValidation,
+  Sensitivity,
+  TrustTier,
+  WorkflowWeight,
+} from "./types.ts";

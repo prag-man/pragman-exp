@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "adapters": {
+    "codex": {
+      "host_version": ">=1.0.0 <2.0.0",
+      "session_formats": { "jsonl": ["1"] },
+      "native_skill_invocation": true,
+      "prompt_handoff": true
+    },
+    "claude-code": {
+      "host_version": ">=1.0.0 <2.0.0",
+      "session_formats": { "jsonl": ["1"] },
+      "native_skill_invocation": true,
+      "prompt_handoff": true
+    },
+    "cursor": {
+      "host_version": ">=0.40.0 <1.0.0",
+      "session_formats": { "markdown": ["1"] },
+      "native_skill_invocation": false,
+      "prompt_handoff": true
+    }
+  }
+}
