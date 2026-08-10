@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/change-record.schema.json",
+  "title": "Pragman change and rollback record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "change_id", "target", "target_id", "base_digest", "preview_digest", "operations", "reason", "evidence_refs", "approved_by", "approved_at", "applied_at", "rollback"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "change_id": { "$ref": "#/$defs/uuidv7" },
+    "target": { "enum": ["personal", "workspace", "project"] },
+    "target_id": { "$ref": "#/$defs/slug" },
+    "base_digest": { "$ref": "#/$defs/sha256" },
+    "preview_digest": { "$ref": "#/$defs/sha256" },
+    "operations": { "type": "array", "items": { "$ref": "#/$defs/operation" } },
+    "reason": { "type": "string", "minLength": 1 },
+    "evidence_refs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "approved_by": { "const": "local-user" },
+    "approved_at": { "type": "string", "format": "date-time" },
+    "applied_at": { "type": ["string", "null"], "format": "date-time" },
+    "rollback": { "$ref": "#/$defs/rollback" }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "uuidv7": { "type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "operation": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["op", "path", "value"],
+          "properties": { "op": { "enum": ["add", "replace"] }, "path": { "type": "string", "pattern": "^/" }, "value": {} }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["op", "path"],
+          "properties": { "op": { "const": "remove" }, "path": { "type": "string", "pattern": "^/" } }
+        }
+      ]
+    },
+    "rollback": {
+      "type": "object", "additionalProperties": false,
+      "required": ["available", "snapshot_ref", "rolled_back_at"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "snapshot_ref": { "type": "string", "minLength": 1 },
+        "rolled_back_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    }
+  }
+}

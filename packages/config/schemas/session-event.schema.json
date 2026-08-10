@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/session-event.schema.json",
+  "title": "Pragman normalized session event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "session_id", "source", "source_version", "source_alias", "sequence", "timestamp", "event_type", "sensitivity", "provenance"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "event_id": { "type": "string", "minLength": 1 },
+    "session_id": { "type": "string", "minLength": 1 },
+    "source": { "enum": ["codex", "claude-code", "cursor-markdown", "cursor-experimental"] },
+    "source_version": { "type": "string", "minLength": 1 },
+    "source_alias": { "$ref": "#/$defs/alias" },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "event_type": { "enum": ["session-start", "session-end", "user-message", "assistant-message", "tool-start", "tool-end", "tool-error", "approval", "compaction", "interruption", "handoff", "task-boundary", "unsupported"] },
+    "sensitivity": { "$ref": "#/$defs/sensitivity" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "task_id": { "type": "string", "minLength": 1 },
+    "role": { "enum": ["user", "assistant", "system", "tool"] },
+    "tool_name": { "type": "string", "minLength": 1 },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "status": { "enum": ["started", "succeeded", "partial", "failed", "cancelled", "unsupported"] },
+    "content_ref": { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*:[^\\s]+$" },
+    "metrics": { "type": "object", "additionalProperties": { "type": "number" } },
+    "unsupported": { "type": "object", "additionalProperties": true }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "event_type": { "const": "unsupported" } }, "required": ["event_type"] },
+      "then": {},
+      "else": {
+        "not": {
+          "type": "object",
+          "properties": { "unsupported": {} },
+          "required": ["unsupported"]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "alias": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "sensitivity": { "enum": ["public", "internal", "confidential", "restricted"] },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_alias"],
+      "properties": {
+        "source_alias": { "$ref": "#/$defs/alias" },
+        "source_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "locator": { "type": "string" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "inferred_task": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

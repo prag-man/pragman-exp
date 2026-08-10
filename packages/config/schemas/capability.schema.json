@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/capability.schema.json",
+  "title": "Pragman capability",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "stage", "depends_on", "result_contract"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "$ref": "#/$defs/slug" },
+    "stage": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "depends_on": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
+    "result_contract": { "$ref": "#/$defs/slug" },
+    "description": { "type": "string" },
+    "incompatible_with": { "type": "array", "default": [], "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
+  }
+}

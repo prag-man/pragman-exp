@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/personal-config.schema.json",
+  "title": "Pragman personal configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "privacy", "updates", "output"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default_sensitivity"],
+      "properties": {
+        "default_sensitivity": { "$ref": "#/$defs/sensitivity" },
+        "restricted_egress": { "type": "boolean", "default": false }
+      }
+    },
+    "updates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channel"],
+      "properties": {
+        "channel": { "enum": ["stable", "preview", "disabled"] }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format"],
+      "properties": {
+        "format": { "enum": ["human", "json"] },
+        "color": { "enum": ["auto", "always", "never"], "default": "auto" }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": { "enabled": false },
+      "required": ["enabled"],
+      "properties": { "enabled": { "const": false } }
+    },
+    "routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": { "default_lane": "adaptive" },
+      "required": ["default_lane"],
+      "properties": {
+        "default_lane": { "enum": ["adaptive", "fast", "standard", "deep", "operational"] }
+      }
+    }
+  },
+  "$defs": {
+    "sensitivity": { "enum": ["public", "internal", "confidential", "restricted"] }
+  }
+}

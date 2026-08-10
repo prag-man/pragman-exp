@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/profile.schema.json",
+  "title": "Pragman profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "profile_id", "roles", "responsibilities"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "profile_id": { "$ref": "#/$defs/slug" },
+    "roles": { "$ref": "#/$defs/nonEmptyStrings" },
+    "responsibilities": { "$ref": "#/$defs/nonEmptyStrings" },
+    "preferences": { "type": "object", "default": {}, "additionalProperties": true },
+    "prohibitions": {
+      "type": "array",
+      "default": [],
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/slug" },
+      "$comment": "merge: ordered-set"
+    },
+    "authority": { "type": "array", "default": [], "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "nonEmptyStrings": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true }
+  }
+}
