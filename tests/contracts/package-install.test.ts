@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -34,11 +34,18 @@ test("packed package installs an emitted pragman binary that runs through a syml
     "node_modules/@prag-man/pragman-exp/package.json",
   ), "utf8"));
   assert.equal(installedPackage.bin.pragman, "dist/packages/cli/src/index.js");
+  installedPackage.version = "9.8.7";
+  await writeFile(join(
+    consumerDirectory,
+    "node_modules/@prag-man/pragman-exp/package.json",
+  ), `${JSON.stringify(installedPackage, null, 2)}\n`);
 
   const result = spawnSync(join(consumerDirectory, "node_modules/.bin/pragman"), ["--version", "--json"], {
     cwd: consumerDirectory,
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(JSON.parse(result.stdout).command, "version");
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.command, "version");
+  assert.equal(output.data.version, installedPackage.version);
 });

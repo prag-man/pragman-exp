@@ -387,4 +387,22 @@ test("skill events capture privacy-safe local metrics and reject raw content or 
   ]) {
     assert.equal(validate({ ...event, [field]: unsafeValue }), false, `${field}: ${unsafeValue}`);
   }
+  for (const [field, embeddedSecret] of [
+    ["skill_id", "review-sk-proj-secret"],
+    ["skill_version", "v1-sk-proj-secret"],
+    ["host", "codex-sk-proj-secret"],
+    ["host_version", "v1-sk-proj-secret"],
+    ["model", "gpt-sk-proj-secret"],
+    ["model_version", "v1-sk-proj-secret"],
+    ["harness_version", "v1-sk-proj-secret"],
+    ["session_id", "session-sk-proj-secret"],
+    ["eval_id", "eval-sk-proj-secret"],
+    ["case_id", "case-sk-proj-secret"],
+    ["trial_id", "trial-sk-proj-secret"],
+    ["outcome", "completed-sk-proj-secret"],
+    ["provider", "pragman:review-sk-proj-secret"],
+  ]) {
+    assert.equal(validate({ ...event, [field]: embeddedSecret }), false, `${field}: embedded token`);
+  }
+  assert.equal(validate({ ...event, source_aliases: ["workspace-sk-proj-secret"] }), false, "source_aliases: embedded token");
 });

@@ -12,7 +12,7 @@ const REDACTIONS: ReadonlyArray<readonly [RegExp, string | ((substring: string, 
     (_match, prefix) => `${prefix}[REDACTED:BEARER_TOKEN]`,
   ],
   [
-    /\b([A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|ACCESS_KEY)[A-Z0-9_]*\s*=\s*)(?:"[^"]*"|'[^']*'|[^\s]+)/g,
+    /\b((?:[A-Z][A-Z0-9_]*_)?(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|ACCESS_KEY)(?:_[A-Z0-9]+)*\s*=\s*)(?:"[^"]*"|'[^']*'|[^\s]+)/gi,
     (_match, prefix) => `${prefix}[REDACTED:SECRET]`,
   ],
   [
@@ -44,6 +44,9 @@ export function sanitizeTranscriptExcerpt(
   content: string,
   sourceAlias: string,
 ): Readonly<SanitizedTranscriptExcerpt> {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(sourceAlias)) {
+    throw new TypeError("Transcript source alias must be a canonical lowercase ASCII slug");
+  }
   return Object.freeze({
     kind: "untrusted-transcript",
     source_alias: sourceAlias,

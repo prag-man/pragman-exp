@@ -43,12 +43,13 @@
     "append_only": { "const": true }
   },
   "$defs": {
-    "slug": { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
-    "namespacedId": { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" },
-    "providerId": { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$" },
-    "alias": { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
-    "safeVersion": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^(?!(?:sk-(?:proj-)?|gh[pousr]_|AKIA|xox[baprs]-|AIza))[A-Za-z0-9][A-Za-z0-9._:+/-]*$" },
-    "safeModel": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!(?:sk-(?:proj-)?|gh[pousr]_|AKIA|xox[baprs]-|AIza))[A-Za-z0-9][A-Za-z0-9._:+/-]*$" },
+    "secretFree": { "type": "string", "not": { "pattern": "(?:sk-(?:proj-)?|gh[pousr]_|AKIA|xox[baprs]-|AIza)" } },
+    "slug": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }] },
+    "namespacedId": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" }] },
+    "providerId": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$" }] },
+    "alias": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }] },
+    "safeVersion": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$" }] },
+    "safeModel": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$" }] },
     "uuidv7": { "type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
     "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
   }
