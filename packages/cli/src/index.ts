@@ -2,6 +2,8 @@
 
 import { parseArguments } from "./args.ts";
 import { errorEnvelope, EXIT_CODES, successEnvelope } from "./envelope.ts";
+import { executeEventsCommand, type CommandExecution, type CommandIo } from "./commands/events.ts";
+import { executeEvalCommand } from "./commands/eval.ts";
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -76,6 +78,32 @@ export function run(argv: readonly string[]): number {
   return EXIT_CODES.success;
 }
 
+async function readStandardInput(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function render(result: CommandExecution, json: boolean): void {
+  if (json) writeJson(result.envelope);
+  else (result.stderr ? process.stderr : process.stdout).write(`${result.human}\n`);
+}
+
+export async function runCli(
+  argv: readonly string[],
+  io: CommandIo = { readStdin: readStandardInput },
+): Promise<number> {
+  const arguments_ = parseArguments(argv);
+  if (arguments_.command === "version" || arguments_.command === "help" || arguments_.command === "invalid") {
+    return run(argv);
+  }
+  const result = arguments_.command.startsWith("events.")
+    ? await executeEventsCommand(arguments_, io)
+    : await executeEvalCommand(arguments_, io);
+  render(result, arguments_.json);
+  return result.exitCode;
+}
+
 export function isMainModule(moduleUrl: string, entryPath: string | undefined): boolean {
   if (!entryPath) return false;
   try {
@@ -88,5 +116,5 @@ export function isMainModule(moduleUrl: string, entryPath: string | undefined): 
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {
-  process.exitCode = run(process.argv.slice(2));
+  process.exitCode = await runCli(process.argv.slice(2));
 }

@@ -1,6 +1,8 @@
 export { canonicalJson, sha256Digest } from "./canonical.ts";
 export { compareAblation } from "./ablation.ts";
 export { createLifecycleIndex } from "./lifecycle.ts";
+export { createEvalCandidate, createEvalCandidateDecision } from "./eval-candidates.ts";
+export { applyExportPlan, createExportPlan } from "./export.ts";
 export {
   calculateOutcomeMetrics,
   calculateRoutingMetrics,
@@ -12,8 +14,22 @@ export {
 } from "./metrics.ts";
 export { DURABLE_RECORD_TYPES, EventStoreError, resolvePartitionPath, resolveStateRoot } from "./paths.ts";
 export { recommendSkillLifecycle, generateLifecycleRecommendations } from "./recommendations.ts";
+export {
+  applyRetentionPlan,
+  createPurgePlan,
+  createRetentionPlan,
+  DEFAULT_RETENTION_POLICY,
+  retentionStateDigest,
+  verifyRetentionPlanDigest,
+} from "./retention.ts";
 export { aggregateWeeklyRollups, buildDailyRollups, buildRollups, rebuildRollups, sealRollup, verifyRollup } from "./rollups.ts";
 export { appendBestEffort, appendDurable, readPartition } from "./store.ts";
+export {
+  DEFAULT_PERSONAL_CONFIG_PATH,
+  loadEventSettings,
+  observeSkillEvent,
+  resolveMeasurementSettings,
+} from "./settings.ts";
 export {
   createEventValidators,
   USER_RATING_GRADER_ID,
@@ -21,6 +37,34 @@ export {
   USER_RATING_RUBRIC,
   USER_RATING_RUBRIC_DIGEST,
 } from "./validation.ts";
+export type {
+  LoadedEventSettings,
+  MeasurementSettingsResolution,
+  ObservationResult,
+} from "./settings.ts";
+export type {
+  AutomaticRetentionPlan,
+  ExplicitPurgePlan,
+  PurgeClass,
+  RetentionApplyDependencies,
+  RetentionApplyResult,
+  RetentionPlan,
+  RetentionPolicy,
+  RetentionQuarantineRecord,
+  RetentionRemovalSet,
+  RetentionState,
+} from "./retention.ts";
+export type {
+  CreateEvalCandidateDecisionFields,
+  CreateEvalCandidateDecisionInput,
+  CreateEvalCandidateInput,
+} from "./eval-candidates.ts";
+export type {
+  ExportApplyResult,
+  ExportApprovalRequired,
+  ExportBundle,
+  ExportPlan,
+} from "./export.ts";
 export type {
   AblationArm,
   AblationComparison,
