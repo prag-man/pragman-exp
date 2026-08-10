@@ -53,8 +53,37 @@ const COMMANDS = [
   "history purge", "eval [run|compare]", "events record|score|list|summary|rebuild|export|purge|candidates list|candidates decide",
 ];
 
+const COMMAND_USAGE: Record<string, string> = {
+  init: "pragman init [--config DIR] [--project-root DIR] [--apply DIGEST]",
+  scan: "pragman scan [--project-root DIR]",
+  doctor: "pragman doctor [--config DIR] [--project-root DIR]",
+  route: "pragman route [--file INPUT.json] [--provider ID] [--host HOST] [--project-root DIR]",
+  tune: "pragman tune [--file INPUT.json] [--state-root DIR] [--config DIR] [--apply DIGEST]",
+  "workspace add": "pragman workspace add [--file INPUT.json] [--config DIR] [--apply DIGEST]",
+  "workspace edit": "pragman workspace edit --workspace ID [--file PATCH.json] [--config DIR] [--apply DIGEST]",
+  "workspace list": "pragman workspace list [--config DIR]",
+  "workspace link": "pragman workspace link [--file INPUT.json] --project-root DIR [--config DIR] [--apply DIGEST]",
+  "workspace unlink": "pragman workspace unlink --project-root DIR [--config DIR] [--apply DIGEST]",
+  "workspace validate": "pragman workspace validate [--workspace ID] [--project-root DIR] [--config DIR]",
+  "providers list": "pragman providers list [--host HOST] [--project-root DIR] [--config DIR]",
+  "providers inspect": "pragman providers inspect --provider ID [--host HOST] [--project-root DIR] [--config DIR]",
+  "providers prefer": "pragman providers prefer --provider ID[,ID...] [--config DIR] [--apply DIGEST]",
+  "providers trust": "pragman providers trust --provider ID --acknowledge-trust [--config DIR] [--apply DIGEST]",
+  "sessions scan": "pragman sessions scan --file SELECTION.json [--state-root DIR]",
+  "sessions analyze": "pragman sessions analyze --file SELECTION.json [--state-root DIR]",
+  "sessions purge": "pragman sessions purge [--from DATE] [--through DATE] [--class CLASS] [--state-root DIR] [--apply DIGEST]",
+  "changes list": "pragman changes list [--config DIR]",
+  "changes preview": "pragman changes preview [--file CHANGE.json] [--config DIR]",
+  "changes apply": "pragman changes apply [--file CHANGE.json] --apply DIGEST [--config DIR]",
+  "changes rollback": "pragman changes rollback --change ID [--config DIR] [--project-root DIR] [--apply DIGEST]",
+  "history purge": "pragman history purge [--from DATE] [--through DATE] [--config DIR] [--apply DIGEST]",
+  eval: "pragman eval [--file DESCRIPTOR.json] [--state-root DIR]",
+  "eval run": "pragman eval run [--file DESCRIPTOR.json] [--state-root DIR]",
+  "eval compare": "pragman eval compare [--file DESCRIPTOR.json] [--state-root DIR]",
+};
+
 function helpUsage(target?: string): string {
-  if (target) return `Usage: pragman ${target} [options]\nUse --json for a stable machine-readable envelope.`;
+  if (target) return `Usage: ${COMMAND_USAGE[target] ?? `pragman ${target} [options]`}\nInputs default to stdin when --file is supported. Use --json for a stable machine-readable envelope.`;
   return `Usage: pragman <command> [options]\nCommands: ${COMMANDS.join("; ")}\nUse pragman <command> --help for command-specific usage.`;
 }
 
