@@ -119,6 +119,7 @@ export interface TaskContract {
   schema_version: 1;
   route_id: string;
   parent_route_id: string | null;
+  router_depth: number;
   request_digest: string;
   outcome: string;
   lane: Lane;

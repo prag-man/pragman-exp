@@ -66,6 +66,8 @@ test("route produces an explainable immutable contract through a discovered bund
   assert.equal(routed.status, 0, routed.stderr);
   const data = JSON.parse(routed.stdout).data;
   assert.equal(data.status, "ready");
+  assert.equal(data.execution_status, "not-started");
+  assert.equal(data.contract.router_depth, 0);
   assert.deepEqual(data.contract.providers, ["pragman:shape"]);
   assert.equal(data.contract.request_digest.includes("Shape the"), false);
   assert.ok(data.explanation.laneReasons.length > 0);

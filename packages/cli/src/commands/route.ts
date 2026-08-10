@@ -88,7 +88,8 @@ export async function executeRouteCommand(arguments_: CliArguments, io: CommandI
       ...(context.explicitLane ? { explicitLane: context.explicitLane } : {}),
       ...(arguments_.provider ? { explicitProviders: [arguments_.provider] } : {}),
     });
-    const resultWithContext = context.evidence ? { ...result, context_policy_evidence: context.evidence } : result;
+    const routedResult = { ...result, execution_status: "not-started" as const };
+    const resultWithContext = context.evidence ? { ...routedResult, context_policy_evidence: context.evidence } : routedResult;
     if (result.status !== "ready" && result.status !== "existing") {
       const code = result.code;
       const human = result.requiredInput ?? result.recommendations?.join(", ") ?? code;
@@ -96,7 +97,7 @@ export async function executeRouteCommand(arguments_: CliArguments, io: CommandI
     }
     const observationWarnings = await observeRouteLifecycle(arguments_, routeLifecycleEvents({
       routeId: result.contract.route_id, host, ...(arguments_.hostVersion ? { hostVersion: arguments_.hostVersion } : {}),
-      provider: result.contract.providers[0] ?? null, status: "succeeded", startedAt,
+      provider: result.contract.providers[0] ?? null, startedAt,
     }));
     return { exitCode: EXIT_CODES.success, envelope: successEnvelope("route", resultWithContext, [...warnings, ...observationWarnings]), human: `${result.contract.lane} route: ${result.contract.providers.join(" → ") || "native response"}.`, stderr: false };
   } catch (error) {

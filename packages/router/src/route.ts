@@ -153,6 +153,7 @@ export function routeTask(input: RouteInput, options: RouteOptions): RouteResult
     schema_version: 1,
     route_id: routeId,
     parent_route_id: options.parentRouteId ?? null,
+    router_depth: depth,
     request_digest: digest(input.request),
     outcome: input.desired_outcome,
     lane,

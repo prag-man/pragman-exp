@@ -169,6 +169,7 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
     schema_version: 1,
     route_id: "018f5b8c-7f2d-7a51-a9c0-1d4cb73b10ab",
     parent_route_id: null,
+    router_depth: 0,
     request_digest: "a".repeat(64),
     outcome: "review the change",
     lane: "standard",
