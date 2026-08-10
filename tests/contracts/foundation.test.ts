@@ -11,7 +11,7 @@ test("package targets supported Node releases and exposes the pragman binary", a
   assert.equal(packageJson.name, "@prag-man/pragman-exp");
   assert.equal(packageJson.type, "module");
   assert.equal(packageJson.engines.node, ">=22 <25");
-  assert.equal(packageJson.bin.pragman, "packages/cli/src/index.ts");
+  assert.equal(packageJson.bin.pragman, "dist/packages/cli/src/index.js");
 });
 
 test("pragman --version --json returns the stable automation envelope", () => {
@@ -54,4 +54,3 @@ test("unknown CLI arguments use the invalid-input exit class and JSON error", ()
   assert.equal(output.error.code, "INVALID_INPUT");
   assert.equal(output.error.retryable, false);
 });
-

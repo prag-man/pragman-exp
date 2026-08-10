@@ -7,11 +7,17 @@
     "node": ">=22 <25"
   },
   "bin": {
-    "pragman": "packages/cli/src/index.ts"
+    "pragman": "dist/packages/cli/src/index.js"
   },
+  "files": [
+    "dist/",
+    "packages/config/schemas/",
+    "scripts/"
+  ],
   "scripts": {
-    "build": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts",
+    "build": "tsc",
+    "prepack": "npm run build",
+    "test": "node scripts/run-tests.mjs",
     "evals": "node scripts/run-evals.mjs"
   },
   "dependencies": {

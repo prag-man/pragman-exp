@@ -20,8 +20,8 @@
     "out_of_scope": { "$ref": "#/$defs/stringArray", "default": [] },
     "assumptions": { "$ref": "#/$defs/stringArray", "default": [] },
     "unresolved_conflicts": { "$ref": "#/$defs/stringArray", "default": [] },
-    "capabilities": { "$ref": "#/$defs/idArray", "$comment": "merge: ordered-set", "default": [] },
-    "providers": { "$ref": "#/$defs/idArray", "default": [] },
+    "capabilities": { "$ref": "#/$defs/capabilityIdArray", "$comment": "merge: ordered-set", "default": [] },
+    "providers": { "$ref": "#/$defs/providerIdArray", "default": [] },
     "provider_sequence_policy": { "enum": ["stop", "continue-independent", "fallback"], "default": "stop" },
     "allowed_side_effects": { "type": "array", "uniqueItems": true, "default": [], "items": { "$ref": "#/$defs/sideEffect" } },
     "data_inputs": { "type": "array", "default": [], "items": { "$ref": "#/$defs/dataInput" } },
@@ -29,7 +29,7 @@
     "egress_approvals": { "type": "array", "default": [], "items": { "$ref": "#/$defs/egressApproval" } },
     "proof": { "$ref": "#/$defs/stringArray", "default": [] },
     "stop_conditions": { "$ref": "#/$defs/stringArray", "default": [] },
-    "created_at": { "type": "string", "format": "date-time" }
+    "created_at": { "type": "string", "format": "date-time", "pattern": "Z$" }
   },
   "$defs": {
     "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
@@ -37,7 +37,9 @@
     "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "sensitivity": { "enum": ["public", "internal", "confidential", "restricted"] },
     "stringArray": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-    "idArray": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
+    "providerId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" },
+    "capabilityIdArray": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
+    "providerIdArray": { "type": "array", "items": { "$ref": "#/$defs/providerId" }, "uniqueItems": true },
     "sideEffect": { "enum": ["project-file-write", "workspace-file-write", "credential-use", "destructive-action", "paid-external-action", "production-data-write", "external-message", "issue-write", "pull-request-write", "purchase", "external-account-mutation", "deployment", "live-data-write"] },
     "dataInput": {
       "type": "object", "additionalProperties": false,
@@ -56,7 +58,7 @@
         "destination": { "enum": ["host-model", "mcp-connector", "research-provider", "external-skill", "local-process", "external-api"] },
         "content_digest": { "$ref": "#/$defs/sha256" },
         "approved": { "type": "boolean" },
-        "expires_at": { "type": "string", "format": "date-time" }
+        "expires_at": { "type": "string", "format": "date-time", "pattern": "Z$" }
       }
     }
   }

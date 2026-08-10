@@ -12,7 +12,7 @@
       "additionalProperties": false,
       "properties": {
         "lane": { "enum": ["adaptive", "fast", "standard", "deep", "operational"], "default": "adaptive" },
-        "providers": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true, "default": [] },
+        "providers": { "$ref": "#/$defs/providerIdArray", "default": [] },
         "require_approval": { "$ref": "#/$defs/approval", "default": null }
       }
     },
@@ -20,63 +20,179 @@
     "capability_aliases": {
       "type": "object",
       "default": {},
-      "propertyNames": { "$ref": "#/$defs/slug" },
-      "additionalProperties": { "$ref": "#/$defs/slug" }
+      "propertyNames": { "$ref": "#/$defs/capabilityId" },
+      "additionalProperties": { "$ref": "#/$defs/capabilityId" }
     }
   },
   "$defs": {
     "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "capabilityId": { "$ref": "#/$defs/slug" },
+    "providerId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" },
     "approval": { "type": ["string", "null"], "enum": ["route", "egress", "action", "target-specific", null] },
-    "idArray": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
+    "capabilityIdArray": { "type": "array", "items": { "$ref": "#/$defs/capabilityId" }, "uniqueItems": true },
+    "providerIdArray": { "type": "array", "items": { "$ref": "#/$defs/providerId" }, "uniqueItems": true },
+    "sideEffect": { "enum": ["project-file-write", "workspace-file-write", "credential-use", "destructive-action", "paid-external-action", "production-data-write", "external-message", "issue-write", "pull-request-write", "purchase", "external-account-mutation", "deployment", "live-data-write"] },
+    "egressDestination": { "enum": ["host-model", "mcp-connector", "research-provider", "external-skill", "local-process", "external-api"] },
     "condition": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["field", "op", "value"],
-          "properties": {
-            "field": { "enum": ["task_family", "deliverable_kind", "execution_mode", "urgency", "estimated_sessions", "downstream_impact", "reversibility", "effective_sensitivity"] },
-            "op": { "enum": ["eq", "in"] },
-            "value": {}
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["field", "op", "value"],
-          "properties": {
-            "field": { "enum": ["declared_side_effects", "requested_capabilities", "scope_systems", "egress_destinations", "data_categories"] },
-            "op": { "enum": ["contains", "intersects", "contains_all"] },
-            "value": {}
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["field", "op", "value"],
-          "properties": {
-            "field": { "enum": ["uncertainty_max_impact", "independent_system_count"] },
-            "op": { "enum": ["eq", "gte", "lte"] },
-            "value": {}
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["field", "op"],
-          "properties": {
-            "field": { "enum": ["workspace", "project"] },
-            "op": { "enum": ["eq", "is_null"] },
-            "value": { "type": ["string", "null"] }
-          },
-          "allOf": [
-            {
-              "if": { "properties": { "op": { "const": "eq" } }, "required": ["op"] },
-              "then": { "required": ["value"] }
-            }
-          ]
-        }
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "op"],
+      "properties": {
+        "field": { "enum": ["task_family", "deliverable_kind", "execution_mode", "urgency", "estimated_sessions", "downstream_impact", "reversibility", "effective_sensitivity", "declared_side_effects", "requested_capabilities", "scope_systems", "egress_destinations", "data_categories", "uncertainty_max_impact", "independent_system_count", "workspace", "project"] },
+        "op": { "enum": ["eq", "in", "contains", "intersects", "contains_all", "gte", "lte", "is_null"] },
+        "value": {}
+      },
+      "allOf": [
+        { "$ref": "#/$defs/taskFamilyCondition" },
+        { "$ref": "#/$defs/deliverableCondition" },
+        { "$ref": "#/$defs/executionModeCondition" },
+        { "$ref": "#/$defs/urgencyCondition" },
+        { "$ref": "#/$defs/estimatedSessionsCondition" },
+        { "$ref": "#/$defs/downstreamImpactCondition" },
+        { "$ref": "#/$defs/reversibilityCondition" },
+        { "$ref": "#/$defs/sensitivityCondition" },
+        { "$ref": "#/$defs/sideEffectsCondition" },
+        { "$ref": "#/$defs/capabilitiesCondition" },
+        { "$ref": "#/$defs/systemsCondition" },
+        { "$ref": "#/$defs/egressCondition" },
+        { "$ref": "#/$defs/categoriesCondition" },
+        { "$ref": "#/$defs/uncertaintyImpactCondition" },
+        { "$ref": "#/$defs/systemCountCondition" },
+        { "$ref": "#/$defs/contextIdCondition" }
       ]
+    },
+    "taskFamilyCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "task_family" } }, "required": ["field"] },
+      "then": { "$ref": "#/$defs/taskFamilyValue" }
+    },
+    "taskFamilyValue": {
+      "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "eq" }, "value": { "enum": ["explain", "research", "shape", "prototype", "implement", "debug", "review", "analyze", "operate", "administer"] } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "const": "in" }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["explain", "research", "shape", "prototype", "implement", "debug", "review", "analyze", "operate", "administer"] } } }, "required": ["op", "value"] }
+      ]
+    },
+    "deliverableCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "deliverable_kind" } }, "required": ["field"] },
+      "then": { "$ref": "#/$defs/deliverableValue" }
+    },
+    "deliverableValue": {
+      "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "eq" }, "value": { "enum": ["response-only", "local-artifact", "project-change", "external-action"] } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "const": "in" }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["response-only", "local-artifact", "project-change", "external-action"] } } }, "required": ["op", "value"] }
+      ]
+    },
+    "executionModeCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "execution_mode" } }, "required": ["field"] },
+      "then": { "$ref": "#/$defs/executionModeValue" }
+    },
+    "executionModeValue": {
+      "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "eq" }, "value": { "enum": ["serial", "independent-fanout"] } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "const": "in" }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["serial", "independent-fanout"] } } }, "required": ["op", "value"] }
+      ]
+    },
+    "urgencyCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "urgency" } }, "required": ["field"] },
+      "then": { "$ref": "#/$defs/urgencyValue" }
+    },
+    "urgencyValue": {
+      "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "eq" }, "value": { "enum": ["normal", "urgent"] } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "const": "in" }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["normal", "urgent"] } } }, "required": ["op", "value"] }
+      ]
+    },
+    "estimatedSessionsCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "estimated_sessions" } }, "required": ["field"] },
+      "then": { "$ref": "#/$defs/estimatedSessionsValue" }
+    },
+    "estimatedSessionsValue": {
+      "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "eq" }, "value": { "enum": ["one", "multiple", "unknown"] } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "const": "in" }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["one", "multiple", "unknown"] } } }, "required": ["op", "value"] }
+      ]
+    },
+    "downstreamImpactCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "downstream_impact" } }, "required": ["field"] },
+      "then": { "$ref": "#/$defs/impactValue" }
+    },
+    "reversibilityCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "reversibility" } }, "required": ["field"] },
+      "then": { "$ref": "#/$defs/reversibilityValue" }
+    },
+    "sensitivityCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "effective_sensitivity" } }, "required": ["field"] },
+      "then": { "$ref": "#/$defs/sensitivityValue" }
+    },
+    "impactValue": {
+      "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "eq" }, "value": { "enum": ["low", "medium", "high"] } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "const": "in" }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["low", "medium", "high"] } } }, "required": ["op", "value"] }
+      ]
+    },
+    "reversibilityValue": {
+      "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "eq" }, "value": { "enum": ["reversible", "costly", "irreversible"] } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "const": "in" }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["reversible", "costly", "irreversible"] } } }, "required": ["op", "value"] }
+      ]
+    },
+    "sensitivityValue": {
+      "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "eq" }, "value": { "enum": ["public", "internal", "confidential", "restricted"] } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "const": "in" }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["public", "internal", "confidential", "restricted"] } } }, "required": ["op", "value"] }
+      ]
+    },
+    "sideEffectsCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "declared_side_effects" } }, "required": ["field"] },
+      "then": { "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "contains" }, "value": { "$ref": "#/$defs/sideEffect" } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "enum": ["intersects", "contains_all"] }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/sideEffect" } } }, "required": ["op", "value"] }
+      ] }
+    },
+    "capabilitiesCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "requested_capabilities" } }, "required": ["field"] },
+      "then": { "$ref": "#/$defs/capabilityListValue" }
+    },
+    "systemsCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "scope_systems" } }, "required": ["field"] },
+      "then": { "$ref": "#/$defs/slugListValue" }
+    },
+    "egressCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "egress_destinations" } }, "required": ["field"] },
+      "then": { "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "contains" }, "value": { "$ref": "#/$defs/egressDestination" } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "enum": ["intersects", "contains_all"] }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/egressDestination" } } }, "required": ["op", "value"] }
+      ] }
+    },
+    "categoriesCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "data_categories" } }, "required": ["field"] },
+      "then": { "$ref": "#/$defs/slugListValue" }
+    },
+    "capabilityListValue": {
+      "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "contains" }, "value": { "$ref": "#/$defs/capabilityId" } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "enum": ["intersects", "contains_all"] }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/capabilityId" } } }, "required": ["op", "value"] }
+      ]
+    },
+    "slugListValue": {
+      "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "contains" }, "value": { "$ref": "#/$defs/slug" } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "enum": ["intersects", "contains_all"] }, "value": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } } }, "required": ["op", "value"] }
+      ]
+    },
+    "uncertaintyImpactCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "uncertainty_max_impact" } }, "required": ["field"] },
+      "then": { "type": "object", "properties": { "op": { "enum": ["eq", "gte", "lte"] }, "value": { "enum": ["low", "medium", "high"] } }, "required": ["op", "value"] }
+    },
+    "systemCountCondition": {
+      "if": { "type": "object", "properties": { "field": { "const": "independent_system_count" } }, "required": ["field"] },
+      "then": { "type": "object", "properties": { "op": { "enum": ["eq", "gte", "lte"] }, "value": { "type": "integer", "minimum": 0 } }, "required": ["op", "value"] }
+    },
+    "contextIdCondition": {
+      "if": { "type": "object", "properties": { "field": { "enum": ["workspace", "project"] } }, "required": ["field"] },
+      "then": { "oneOf": [
+        { "type": "object", "properties": { "op": { "const": "eq" }, "value": { "$ref": "#/$defs/slug" } }, "required": ["op", "value"] },
+        { "type": "object", "properties": { "op": { "const": "is_null" }, "value": false }, "required": ["op"] }
+      ] }
     },
     "expressionLevel3": {
       "oneOf": [
@@ -103,9 +219,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "require_capabilities": { "$ref": "#/$defs/idArray", "$comment": "merge: ordered-set" },
-        "prefer": { "$ref": "#/$defs/idArray", "$comment": "merge: ordered-set" },
-        "avoid": { "$ref": "#/$defs/idArray", "$comment": "merge: ordered-set" },
+        "require_capabilities": { "$ref": "#/$defs/capabilityIdArray", "$comment": "merge: ordered-set" },
+        "prefer": { "$ref": "#/$defs/providerIdArray", "$comment": "merge: ordered-set" },
+        "avoid": { "$ref": "#/$defs/providerIdArray", "$comment": "merge: ordered-set" },
         "minimum_lane": { "enum": ["fast", "standard", "deep", "operational"] },
         "require_approval": { "$ref": "#/$defs/approval" }
       },

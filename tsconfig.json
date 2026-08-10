@@ -8,7 +8,9 @@
     "exactOptionalPropertyTypes": true,
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
-    "noEmit": true,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": ".",
+    "outDir": "dist",
     "types": ["node"]
   },
   "include": ["packages/**/*.ts"]

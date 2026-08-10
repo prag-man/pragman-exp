@@ -10,12 +10,13 @@ test("redacts representative secrets deterministically without echoing secret ma
     "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
     "DATABASE_URL=postgres://admin:correct-horse-battery-staple@db.example.test/app",
     "-----BEGIN PRIVATE KEY-----\nsuper-secret-key-body\n-----END PRIVATE KEY-----",
+    "-----BEGIN ENCRYPTED PRIVATE KEY-----\nencrypted-pkcs8-secret\n-----END ENCRYPTED PRIVATE KEY-----",
   ].join("\n");
 
   const first = redactText(input);
   const second = redactText(input);
   assert.equal(first, second);
-  assert.doesNotMatch(first, /sk-proj-|ghp_|AKIAIOS|wJalr|correct-horse|super-secret-key-body/);
+  assert.doesNotMatch(first, /sk-proj-|ghp_|AKIAIOS|wJalr|correct-horse|super-secret-key-body|encrypted-pkcs8-secret/);
   assert.match(first, /\[REDACTED:BEARER_TOKEN\]/);
   assert.match(first, /GITHUB_TOKEN=\[REDACTED:SECRET\]/);
   assert.match(first, /AWS_ACCESS_KEY_ID=\[REDACTED:SECRET\]/);
@@ -44,4 +45,3 @@ test("transcript excerpts are explicitly untrusted and injected instructions rem
   assert.match(excerpt.content, /Ignore prior instructions/);
   assert.doesNotMatch(excerpt.content, /ghp_/);
 });
-

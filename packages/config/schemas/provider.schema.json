@@ -7,8 +7,8 @@
   "required": ["schema_version", "id", "source", "source_version", "trust", "capabilities", "host_support", "invoke", "context_policy", "side_effects", "workflow_weight", "result_contract"],
   "properties": {
     "schema_version": { "const": 1 },
-    "id": { "$ref": "#/$defs/slug" },
-    "source": { "enum": ["bundled", "curated", "workspace", "discovered"] },
+    "id": { "$ref": "#/$defs/providerId" },
+    "source": { "$ref": "#/$defs/providerSource" },
     "source_version": { "type": "string", "minLength": 1 },
     "trust": { "enum": ["bundled", "curated", "workspace-approved", "discovered", "quarantined"] },
     "capabilities": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
@@ -27,6 +27,13 @@
   },
   "$defs": {
     "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "providerId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" },
+    "providerSource": {
+      "oneOf": [
+        { "$ref": "#/$defs/slug" },
+        { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$" }
+      ]
+    },
     "sensitivity": { "enum": ["public", "internal", "confidential", "restricted"] },
     "sideEffect": {
       "enum": ["project-file-write", "workspace-file-write", "credential-use", "destructive-action", "paid-external-action", "production-data-write", "external-message", "issue-write", "pull-request-write", "purchase", "external-account-mutation", "deployment", "live-data-write"]
@@ -36,7 +43,7 @@
       "oneOf": [
         {
           "type": "object", "additionalProperties": false, "required": ["type", "skill_id"],
-          "properties": { "type": { "const": "native-skill" }, "skill_id": { "$ref": "#/$defs/slug" } }
+          "properties": { "type": { "const": "native-skill" }, "skill_id": { "$ref": "#/$defs/providerId" } }
         },
         {
           "type": "object", "additionalProperties": false, "required": ["type", "template_id"],

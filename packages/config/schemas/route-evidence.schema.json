@@ -10,14 +10,15 @@
     "route_id": { "$ref": "#/$defs/uuidv7" },
     "decision": { "$ref": "#/$defs/decision" },
     "provider_results": { "type": "array", "items": { "$ref": "#/$defs/providerResult" } },
-    "started_at": { "type": "string", "format": "date-time" },
-    "finished_at": { "type": "string", "format": "date-time" },
+    "started_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "finished_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
     "verification": { "type": "array", "default": [], "items": { "$ref": "#/$defs/verification" } },
     "user_feedback": { "enum": ["succeeded", "partial", "failed", "rolled-back"] },
     "sensitive_source_aliases": { "type": "array", "default": [], "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } }
   },
   "$defs": {
     "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "providerId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" },
     "uuidv7": { "type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
     "decision": {
       "type": "object",
@@ -25,9 +26,9 @@
       "required": ["lane", "eligible", "selected_providers", "score_explanation", "approval_requirements"],
       "properties": {
         "lane": { "enum": ["fast", "standard", "deep", "operational"] },
-        "eligible": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+        "eligible": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/providerId" } },
         "rejections": { "type": "array", "items": { "$ref": "#/$defs/explanation" } },
-        "selected_providers": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+        "selected_providers": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/providerId" } },
         "score_explanation": { "type": "array", "items": { "$ref": "#/$defs/explanation" } },
         "matched_rules": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
         "conflicts": { "type": "array", "items": { "type": "string" } },
@@ -40,7 +41,7 @@
     "explanation": {
       "type": "object", "additionalProperties": false,
       "required": ["id", "reason"],
-      "properties": { "id": { "$ref": "#/$defs/slug" }, "reason": { "type": "string" }, "score": { "type": "integer" } }
+      "properties": { "id": { "$ref": "#/$defs/providerId" }, "reason": { "type": "string" }, "score": { "type": "integer" } }
     },
     "verification": {
       "type": "object", "additionalProperties": false,
@@ -53,7 +54,7 @@
       "required": ["status", "provider_id", "route_id", "summary", "artifacts", "evidence", "verification", "error"],
       "properties": {
         "status": { "enum": ["succeeded", "partial", "failed", "cancelled", "handoff-required"] },
-        "provider_id": { "$ref": "#/$defs/slug" },
+        "provider_id": { "$ref": "#/$defs/providerId" },
         "route_id": { "$ref": "#/$defs/uuidv7" },
         "summary": { "type": "string" },
         "artifacts": { "type": "array", "items": { "type": "string" } },
