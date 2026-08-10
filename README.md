@@ -115,4 +115,6 @@ npm run evals
 npm pack --dry-run
 ```
 
+Release-only live evaluation is opt-in and offline-safe by default: `node scripts/test-live-hosts.mjs --check` performs prerequisite checks, while `--behavioral` requires authenticated hosts, an explicit environment opt-in, and a create-only content-free evidence path. See the release checklist for the Codex and Claude Code authentication gates and command.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and the [release checklist](docs/operations/release-checklist.md). The project is licensed under the [MIT License](LICENSE).

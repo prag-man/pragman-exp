@@ -1,13 +1,35 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { access, cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { access, cp, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import {
+  buildContentFreeSkillEvidence,
+  createBehavioralExecutionPrompt,
+  createBehavioralExecutionSchema,
+  createBehavioralForward,
+  createBehavioralGradingPrompt,
+  createBehavioralGradingSchema,
+  liveEvidenceDigest,
+  validateBehavioralExecution,
+} from "./lib/live-behavioral-suite.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LIVE_HOSTS = Object.freeze(["codex", "claude-code", "cursor"]);
+const LIVE_SKILLS = Object.freeze([
+  "pragman-analyze",
+  "pragman-init",
+  "pragman-prototype",
+  "pragman-research",
+  "pragman-router",
+  "pragman-shape",
+  "pragman-unfck",
+  "pragman-workspace",
+]);
 const SMOKE_PROMPT = [
   "Use the installed pragman-router skill to route this synthetic request only.",
   "Request: Explain in two sentences why a small local README typo fix is low risk.",
@@ -24,11 +46,12 @@ export function parseLiveHostArguments(argv) {
   let mode = "check";
   let modeWasSet = false;
   let json = false;
+  let evidencePath = null;
   const hosts = [];
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--json") json = true;
-    else if (argument === "--check" || argument === "--run") {
+    else if (argument === "--check" || argument === "--run" || argument === "--behavioral") {
       const nextMode = argument.slice(2);
       if (modeWasSet && mode !== nextMode) fail("Choose either --check or --run");
       mode = nextMode;
@@ -37,9 +60,18 @@ export function parseLiveHostArguments(argv) {
       const host = argv[++index];
       if (!LIVE_HOSTS.includes(host)) fail(`Unsupported live host: ${host}`);
       hosts.push(host);
-    } else fail(`Unknown or incomplete argument: ${argument}`);
+    } else if (argument === "--evidence" && argv[index + 1]) evidencePath = argv[++index];
+    else fail(`Unknown or incomplete argument: ${argument}`);
   }
-  return { hosts: hosts.length === 0 ? [...LIVE_HOSTS] : [...new Set(hosts)], json, mode };
+  const selectedHosts = hosts.length === 0
+    ? mode === "behavioral" ? ["codex", "claude-code"] : [...LIVE_HOSTS]
+    : [...new Set(hosts)];
+  if (mode === "behavioral" && !evidencePath) fail("Behavioral live mode requires --evidence <path>");
+  if (mode === "behavioral" && selectedHosts.includes("cursor")) fail("Cursor does not support the live behavioral host suite");
+  if (mode !== "behavioral" && evidencePath) fail("--evidence is only valid with --behavioral");
+  return mode === "behavioral"
+    ? { hosts: selectedHosts, json, mode, evidencePath }
+    : { hosts: selectedHosts, json, mode };
 }
 
 export function assertLiveRunAuthorized(environment) {
@@ -66,6 +98,30 @@ export function buildLiveHostCommand(host) {
   fail(`Host ${host} uses local adapter acceptance, not an external command`);
 }
 
+export function buildBehavioralHostCommand(host, prompt, schemaPath, schema) {
+  if (host === "codex") {
+    return {
+      command: "codex",
+      args: [
+        "exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--json",
+        "--output-schema", schemaPath, prompt,
+      ],
+      shell: false,
+    };
+  }
+  if (host === "claude-code") {
+    return {
+      command: "claude",
+      args: [
+        "--print", "--output-format", "json", "--permission-mode", "plan", "--tools", "",
+        "--no-session-persistence", "--json-schema", JSON.stringify(schema), prompt,
+      ],
+      shell: false,
+    };
+  }
+  fail(`Host ${host} does not support live behavioral execution`);
+}
+
 function collectStrings(value, result = []) {
   if (typeof value === "string") result.push(value);
   else if (Array.isArray(value)) for (const child of value) collectStrings(child, result);
@@ -86,7 +142,7 @@ function observableText(output) {
   return strings.join("\n");
 }
 
-export function assertCodexTrace(output) {
+function assertCodexSkillTrace(output, skillId) {
   let commandCount = 0;
   let skillReads = 0;
   for (const line of output.split(/\r?\n/).filter(Boolean)) {
@@ -102,25 +158,87 @@ export function assertCodexTrace(output) {
     commandCount += 1;
     const command = typeof item.command === "string" ? item.command : "";
     const aggregatedOutput = typeof item.aggregated_output === "string" ? item.aggregated_output : "";
-    if (/(?:^|\s)(?:rm|mv|cp|touch|mkdir|rmdir|chmod|chown|tee|truncate|install|git|npm|npx|curl|wget|python|node)\b|&&|\|\||[;|>`]|\$\(|(?:^|[/\s"'])\.\.(?:[/\s"']|$)/.test(command)
+    if (/(?:^|\s)(?:rm|mv|cp|touch|mkdir|rmdir|chmod|chown|tee|truncate|install|git|npm|npx|curl|wget|python|node|dd|perl|ruby)\b|\|\||[|>`]|\$\(|(?:^|[/\s"'])\.\.(?:[/\s"']|$)/.test(command)
       || !/\b(?:sed|cat|head|tail|rg|ls|find|wc)\b/.test(command)) {
       fail("Codex live smoke used a non-read-only command");
     }
-    const absoluteSkillRead = /(?:\.agents|\.claude)\/skills\/pragman-router\/SKILL\.md/.test(command);
+    const escapedSkillId = skillId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const allowedSystemPaths = new Set([
+      "/bin/bash", "/bin/cat", "/bin/sh", "/bin/zsh",
+      "/usr/bin/cat", "/usr/bin/env", "/usr/bin/find", "/usr/bin/head", "/usr/bin/sed", "/usr/bin/tail", "/usr/bin/wc",
+    ]);
+    const allowedSkillPath = new RegExp(`/(?:\\.agents|\\.claude)/skills/${escapedSkillId}/(?:SKILL\\.md|COMPATIBILITY\\.md|(?:references|assets)/[a-z0-9][a-z0-9._/-]*)$`);
+    const absolutePaths = [...command.matchAll(/(?:^|[\s"'=])((?:\/[A-Za-z0-9._-]+)+)/g)].map((match) => match[1]);
+    if (absolutePaths.some((path) => !allowedSystemPaths.has(path) && !allowedSkillPath.test(path))) {
+      fail(`Codex live run inspected content outside ${skillId}`);
+    }
+    const suspiciousRelativeFile = [...command.matchAll(/(?:^|[\s"'])([A-Za-z0-9._/-]+\.(?:md|json|ya?ml|txt|html?|toml))(?:[\s"']|$)/g)]
+      .map((match) => match[1])
+      .find((path) => path !== "SKILL.md" && path !== "COMPATIBILITY.md"
+        && !/^(?:references|assets)\/[a-z0-9][a-z0-9._/-]*$/.test(path)
+        && !path.startsWith("/"));
+    if (suspiciousRelativeFile) fail(`Codex live run inspected content outside ${skillId}`);
+    const absoluteSkillRead = new RegExp(`(?:\\.agents|\\.claude)/skills/${escapedSkillId}/SKILL\\.md`).test(command);
     const relativeSkillRead = /(?:^|[\s"'])SKILL\.md(?:[\s"']|$)/.test(command)
-      && /(?:^|\n)name:\s*pragman-router(?:\n|$)/.test(aggregatedOutput);
-    const absoluteSupportRead = /(?:\.agents|\.claude)\/skills\/pragman-router\/(?:references|assets)\/[a-z0-9][a-z0-9._/-]*/.test(command);
-    const relativeSupportRead = /(?:^|[\s"'])(?:references|assets)\/[a-z0-9][a-z0-9._/-]*(?:[\s"']|$)/.test(command);
+      && new RegExp(`(?:^|\\n)name:\\s*${escapedSkillId}(?:\\n|$)`).test(aggregatedOutput);
+    const absoluteSupportRead = new RegExp(`(?:\\.agents|\\.claude)/skills/${escapedSkillId}/(?:COMPATIBILITY\\.md|(?:references|assets)/[a-z0-9][a-z0-9._/-]*)`).test(command);
+    const relativeSupportRead = /(?:^|[\s"'])(?:COMPATIBILITY\.md|(?:references|assets)\/[a-z0-9][a-z0-9._/-]*)(?:[\s"']|$)/.test(command);
     if (!absoluteSkillRead && !relativeSkillRead && !absoluteSupportRead && !relativeSupportRead) {
-      fail("Codex live smoke inspected content outside pragman-router");
+      fail(`Codex live run inspected content outside ${skillId}`);
     }
     if (absoluteSkillRead || relativeSkillRead) {
       skillReads += 1;
     }
     if (item.status !== "completed" || item.exit_code !== 0) fail("Codex live smoke skill inspection did not complete cleanly");
   }
-  if (skillReads === 0) fail("Codex live smoke did not inspect pragman-router/SKILL.md");
+  if (skillReads === 0) fail(`Codex live run did not inspect ${skillId}/SKILL.md`);
   return { skill_reads: skillReads, command_count: commandCount };
+}
+
+export function assertCodexTrace(output) {
+  return assertCodexSkillTrace(output, "pragman-router");
+}
+
+function assertCodexNoTools(output) {
+  for (const line of output.split(/\r?\n/).filter(Boolean)) {
+    let record;
+    try { record = JSON.parse(line); } catch { continue; }
+    if (record?.type !== "item.completed") continue;
+    const item = record.item;
+    if (item && typeof item === "object" && ["command_execution", "file_change", "mcp_tool_call", "web_search"].includes(item.type)) {
+      fail("Codex live grader used a tool");
+    }
+  }
+}
+
+function structuredCandidates(value, candidates) {
+  if (!value || typeof value !== "object") return;
+  if (value.structured_output && typeof value.structured_output === "object") candidates.push(value.structured_output);
+  if (typeof value.result === "string") candidates.push(value.result);
+  if (value.item?.type === "agent_message" && typeof value.item.text === "string") candidates.push(value.item.text);
+}
+
+function parseStructuredHostOutput(output) {
+  const candidates = [];
+  for (const line of output.split(/\r?\n/).filter(Boolean)) {
+    try {
+      const value = JSON.parse(line);
+      structuredCandidates(value, candidates);
+    } catch {
+      // Host wrappers are required for behavioral mode; ignore diagnostic text.
+    }
+  }
+  for (const candidate of candidates.reverse()) {
+    if (candidate && typeof candidate === "object" && Array.isArray(candidate.scenarios)) return candidate;
+    if (typeof candidate !== "string") continue;
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && Array.isArray(parsed.scenarios)) return parsed;
+    } catch {
+      // Try the next structured host result.
+    }
+  }
+  fail("Live host returned no valid structured behavioral result");
 }
 
 export function assertSmokeInvariants(output) {
@@ -152,16 +270,32 @@ function executableStatus(host) {
   const command = host === "codex" ? "codex" : "claude";
   const result = spawnSync(command, ["--version"], { encoding: "utf8", shell: false, timeout: 10_000 });
   if (result.error || result.status !== 0) return { available: false, host, version: null };
-  return { available: true, host, version: sanitizeVersion(result.stdout || result.stderr || "version unavailable") };
+  let authenticated = false;
+  if (host === "codex") {
+    const auth = spawnSync(command, ["login", "status"], { encoding: "utf8", shell: false, timeout: 10_000 });
+    authenticated = auth.status === 0 && /logged in/i.test(`${auth.stdout}\n${auth.stderr}`);
+  } else {
+    const auth = spawnSync(command, ["auth", "status", "--json"], { encoding: "utf8", shell: false, timeout: 10_000 });
+    try { authenticated = auth.status === 0 && JSON.parse(auth.stdout).loggedIn === true; }
+    catch { authenticated = false; }
+  }
+  return {
+    available: true,
+    authenticated,
+    host,
+    version: sanitizeVersion(result.stdout || result.stderr || "version unavailable"),
+  };
 }
 
-async function prepareHostRoot(host) {
+async function prepareHostRoot(host, skillIds = ["pragman-router"]) {
   const root = await mkdtemp(join(tmpdir(), `pragman-live-${host}-`));
-  const target = host === "claude-code"
-    ? join(root, ".claude/skills/pragman-router")
-    : join(root, ".agents/skills/pragman-router");
-  await mkdir(dirname(target), { recursive: true });
-  await cp(join(REPOSITORY_ROOT, "skills/pragman-router"), target, { recursive: true, errorOnExist: true });
+  for (const skillId of skillIds) {
+    const target = host === "claude-code"
+      ? join(root, ".claude/skills", skillId)
+      : join(root, ".agents/skills", skillId);
+    await mkdir(dirname(target), { recursive: true });
+    await cp(join(REPOSITORY_ROOT, "skills", skillId), target, { recursive: true, errorOnExist: true });
+  }
   return root;
 }
 
@@ -201,19 +335,193 @@ async function runCursorAcceptance() {
   return { adapter: "cursor-markdown", passed: true };
 }
 
+async function collectSkillFiles(root, directory = root, result = []) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  if (entries.length > 512) fail("Installed skill exceeds the live evaluation file limit");
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    const path = join(directory, entry.name);
+    if (entry.isSymbolicLink()) fail("Installed skill contains a symlink");
+    if (entry.isDirectory()) await collectSkillFiles(root, path, result);
+    else if (entry.isFile()) result.push({ path, name: relative(root, path).split(sep).join("/") });
+    else fail("Installed skill contains an unsupported file type");
+  }
+  return result;
+}
+
+async function digestSkillDirectory(root) {
+  const hash = createHash("sha256");
+  for (const file of await collectSkillFiles(root)) {
+    const bytes = await readFile(file.path);
+    hash.update(`${file.name}\0${bytes.length}\0`);
+    hash.update(bytes);
+  }
+  return hash.digest("hex");
+}
+
+async function runStructuredHost(host, root, prompt, schema, skillId = null) {
+  const schemaPath = join(root, `.pragman-live-schema-${randomUUID()}.json`);
+  await writeFile(schemaPath, `${JSON.stringify(schema)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+  try {
+    const invocation = buildBehavioralHostCommand(host, prompt, schemaPath, schema);
+    const result = spawnSync(invocation.command, invocation.args, {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, CI: "1", NO_COLOR: "1" },
+      maxBuffer: 4 * 1024 * 1024,
+      shell: false,
+      timeout: 600_000,
+    });
+    if (result.error) fail(`${host} behavioral invocation could not start`);
+    if (result.status !== 0) fail(`${host} behavioral invocation failed`);
+    const output = `${result.stdout}\n${result.stderr}`;
+    if (host === "codex") {
+      if (skillId) assertCodexSkillTrace(output, skillId);
+      else assertCodexNoTools(output);
+    }
+    return parseStructuredHostOutput(output);
+  } finally {
+    await rm(schemaPath, { force: true });
+  }
+}
+
+function contentFreeFailureCode(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/auth|logged in/i.test(message)) return "AUTH_REQUIRED";
+  if (/schema|structured|scenario|observation|invariant/i.test(message)) return "INVALID_STRUCTURED_EVIDENCE";
+  if (/inspect|tool|read-only|outside/i.test(message)) return "UNSAFE_HOST_BEHAVIOR";
+  if (/timed out|timeout/i.test(message)) return "HOST_TIMEOUT";
+  return "HOST_EXECUTION_FAILED";
+}
+
+async function readBehavioralBaseline(skillId) {
+  const path = join(REPOSITORY_ROOT, "skills", skillId, "evals", "baseline.json");
+  const baseline = JSON.parse(await readFile(path, "utf8"));
+  if (baseline?.skill_id !== skillId || !Array.isArray(baseline.scenarios)) fail("Behavioral corpus identity mismatch");
+  return baseline;
+}
+
+async function runBehavioralHost(host, prerequisite) {
+  const root = await prepareHostRoot(host, LIVE_SKILLS);
+  const graderRoot = await mkdtemp(join(tmpdir(), `pragman-live-grader-${host}-`));
+  const skills = [];
+  try {
+    for (const skillId of LIVE_SKILLS) {
+      try {
+        const baseline = await readBehavioralBaseline(skillId);
+        const installedRoot = host === "claude-code"
+          ? join(root, ".claude", "skills", skillId)
+          : join(root, ".agents", "skills", skillId);
+        const skillDigest = await digestSkillDirectory(installedRoot);
+        const execution = validateBehavioralExecution(
+          baseline.scenarios,
+          await runStructuredHost(
+            host,
+            root,
+            createBehavioralExecutionPrompt(skillId, baseline.scenarios),
+            createBehavioralExecutionSchema(baseline.scenarios),
+            skillId,
+          ),
+        );
+        const grading = await runStructuredHost(
+          host,
+          graderRoot,
+          createBehavioralGradingPrompt(skillId, baseline.scenarios, execution),
+          createBehavioralGradingSchema(baseline.scenarios),
+        );
+        const forward = createBehavioralForward(skillId, baseline.scenarios, grading);
+        skills.push(buildContentFreeSkillEvidence({
+          host,
+          hostVersion: prerequisite.version,
+          skillDigest,
+          baseline,
+          forward,
+          execution,
+          grading,
+        }));
+      } catch (error) {
+        skills.push({ schema_version: 1, host, skill_id: skillId, status: "ERROR", error_code: contentFreeFailureCode(error) });
+      }
+    }
+  } finally {
+    await Promise.all([
+      rm(root, { recursive: true, force: true }),
+      rm(graderRoot, { recursive: true, force: true }),
+    ]);
+  }
+  return {
+    host,
+    host_version: prerequisite.version,
+    status: skills.length === LIVE_SKILLS.length && skills.every((skill) => skill.status === "PASS") ? "PASS" : "FAIL",
+    skills,
+  };
+}
+
+async function writeBehavioralEvidence(path, artifact) {
+  const absolutePath = resolve(path);
+  await access(dirname(absolutePath));
+  const handle = await open(absolutePath, "wx", 0o600);
+  try {
+    await handle.write(`${JSON.stringify(artifact)}\n`);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function runBehavioralSuite(options, prerequisites) {
+  const hosts = [];
+  for (const host of options.hosts) {
+    const prerequisite = prerequisites.find((item) => item.host === host);
+    hosts.push(await runBehavioralHost(host, prerequisite));
+  }
+  const skillResults = hosts.flatMap((host) => host.skills);
+  const artifact = {
+    schema_version: 1,
+    artifact_type: "pragman-live-behavioral-evidence",
+    created_at: new Date().toISOString(),
+    status: hosts.every((host) => host.status === "PASS") ? "PASS" : "FAIL",
+    summary: {
+      hosts: hosts.length,
+      skills: skillResults.length,
+      passed_skills: skillResults.filter((skill) => skill.status === "PASS").length,
+      failed_skills: skillResults.filter((skill) => skill.status !== "PASS").length,
+    },
+    hosts,
+  };
+  await writeBehavioralEvidence(options.evidencePath, artifact);
+  return { artifact, artifactDigest: liveEvidenceDigest(artifact) };
+}
+
 async function main(argv) {
   try {
     const options = parseLiveHostArguments(argv);
     const prerequisites = options.hosts.map(executableStatus);
     if (options.mode === "check") {
       const result = { mode: "check", prerequisites };
-      process.stdout.write(options.json ? `${JSON.stringify(result)}\n` : prerequisites.map((item) => `${item.host}: ${item.available ? item.version : "missing"}`).join("\n") + "\n");
-      return prerequisites.every((item) => item.available) ? 0 : 2;
+      process.stdout.write(options.json ? `${JSON.stringify(result)}\n` : prerequisites.map((item) => {
+        if (!item.available) return `${item.host}: missing`;
+        if (item.authenticated === false) return `${item.host}: ${item.version} (authentication required)`;
+        return `${item.host}: ${item.version}`;
+      }).join("\n") + "\n");
+      return prerequisites.every((item) => item.available && item.authenticated !== false) ? 0 : 2;
     }
 
     assertLiveRunAuthorized(process.env);
     const unavailable = prerequisites.filter((item) => !item.available);
     if (unavailable.length > 0) fail(`Missing live host prerequisites: ${unavailable.map((item) => item.host).join(", ")}`);
+    const unauthenticated = prerequisites.filter((item) => item.authenticated === false);
+    if (unauthenticated.length > 0) fail(`Live host authentication required: ${unauthenticated.map((item) => item.host).join(", ")}`);
+    if (options.mode === "behavioral") {
+      const result = await runBehavioralSuite(options, prerequisites);
+      const output = {
+        mode: "behavioral",
+        status: result.artifact.status,
+        evidence_digest: result.artifactDigest,
+        summary: result.artifact.summary,
+      };
+      process.stdout.write(options.json ? `${JSON.stringify(output)}\n` : `behavioral: ${output.status}; evidence ${output.evidence_digest}\n`);
+      return result.artifact.status === "PASS" ? 0 : 1;
+    }
     const results = [];
     for (const host of options.hosts) {
       const invariants = host === "cursor" ? await runCursorAcceptance() : await runExternalHost(host);

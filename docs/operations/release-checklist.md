@@ -9,8 +9,11 @@ This runbook has two deliberate stages: one authenticated beta bootstrap, then s
 - [ ] Run `npm ci`, `npm test`, `npm run build`, `npm run validate:skills`, and `npm run evals` in a clean clone.
 - [ ] Run `npm pack --dry-run`, then create one archive with `npm pack --json` and pass that exact archive to `node scripts/verify-package.mjs <archive>`.
 - [ ] Inspect the file list, package size, license, repository metadata, private-path/secret scan, and checksum.
-- [ ] Run `node scripts/test-live-hosts.mjs --check` and resolve every prerequisite before opting into sanitized live tests.
-- [ ] Run the live Codex and Claude Code smoke tests and the Cursor Markdown adapter acceptance. Save only content-free results.
+- [ ] Run `node scripts/test-live-hosts.mjs --check` and resolve every prerequisite before opting into sanitized live tests. The check is local/offline-safe and reports authentication separately from executable availability.
+- [ ] Require `codex login status` to report a logged-in session. Require `claude auth status --json` to return `"loggedIn": true`; if it does not, stop and let the release operator run `claude auth login`. Never copy an OAuth token or credential into chat, config, evidence, or CI.
+- [ ] Run the bounded router smoke tests and Cursor Markdown adapter acceptance with `PRAGMAN_LIVE_HOST_TESTS=1 node scripts/test-live-hosts.mjs --run`. This remains an explicit local release action and never runs in ordinary CI.
+- [ ] Create the ignored local evidence directory, then run all eight skills against their trigger and non-trigger corpora on both authenticated hosts: `mkdir -p eval-evidence && PRAGMAN_LIVE_HOST_TESTS=1 node scripts/test-live-hosts.mjs --behavioral --host codex --host claude-code --evidence eval-evidence/live-behavioral.json --json`.
+- [ ] Require the behavioral command to pass every derived invariant. Inspect only its content-free artifact: public host/skill identities, versions, digests, boolean results, counts, and timestamps. Prompts and host responses are processed ephemerally and must not appear in evidence.
 
 ## 2. Bootstrap `0.1.0-beta.0`
 
