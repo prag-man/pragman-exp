@@ -7,6 +7,8 @@ const expectedSchemas = [
   "capability.schema.json",
   "change-record.schema.json",
   "envelope.schema.json",
+  "eval-candidate-approval.schema.json",
+  "eval-candidate.schema.json",
   "learning.schema.json",
   "personal-config.schema.json",
   "profile.schema.json",
@@ -16,6 +18,9 @@ const expectedSchemas = [
   "routing.schema.json",
   "session-event.schema.json",
   "skill-event.schema.json",
+  "skill-metric.schema.json",
+  "skill-rollup.schema.json",
+  "skill-score.schema.json",
   "task-contract.schema.json",
   "workspace.schema.json",
 ];
@@ -339,6 +344,7 @@ test("skill events capture privacy-safe local metrics and reject raw content or 
   const event = {
     schema_version: 1,
     event_id: "018f5b8c-7f2d-7a51-a9c0-1d4cb73b10ab",
+    invocation_id: "01905b8c-7f2d-7a51-a9c0-1d4cb73b10ab",
     timestamp: "2026-08-10T12:00:00Z",
     skill_id: "review",
     skill_version: "1.2.0",
@@ -358,9 +364,12 @@ test("skill events capture privacy-safe local metrics and reject raw content or 
     invocation_mode: "router",
     trigger_expected: true,
     trigger_actual: true,
-    outcome: "completed-with-proof",
+    provider_digest: "b".repeat(64),
+    eval_corpus_digest: "c".repeat(64),
+    trial_policy_digest: "d".repeat(64),
+    outcome_code: "completed-with-proof",
     status: "succeeded",
-    latency_ms: 1200,
+    duration_ms: 1200,
     tool_calls: 2,
     retries: 0,
     rework_cycles: 1,
@@ -368,6 +377,7 @@ test("skill events capture privacy-safe local metrics and reject raw content or 
     verification_passes: 3,
     provider: "pragman:builtin-review",
     ablation_arm: "skill-on",
+    observation_source: "router",
     source_aliases: ["workspace-primary", "codex-session-1"],
     storage_scope: "local",
     append_only: true,
@@ -379,7 +389,7 @@ test("skill events capture privacy-safe local metrics and reject raw content or 
   }
   for (const [field, benignValue] of [
     ["skill_id", "task-review"],
-    ["outcome", "risk-analysis"],
+    ["outcome_code", "risk-analysis"],
   ]) {
     assert.equal(validate({ ...event, [field]: benignValue }), true, `${field}: ${benignValue}`);
   }
@@ -407,7 +417,7 @@ test("skill events capture privacy-safe local metrics and reject raw content or 
     ["eval_id", `eval-${realisticToken}`],
     ["case_id", `case-${realisticToken}`],
     ["trial_id", `trial-${realisticToken}`],
-    ["outcome", `completed-${realisticToken}`],
+    ["outcome_code", `completed-${realisticToken}`],
     ["provider", `pragman:review-${realisticToken}`],
   ]) {
     assert.equal(validate({ ...event, [field]: embeddedSecret }), false, `${field}: embedded token`);

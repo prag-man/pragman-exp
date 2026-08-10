@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 const root = new URL("../../", import.meta.url).pathname;
 
@@ -34,6 +35,12 @@ test("packed package installs an emitted pragman binary that runs through a syml
     "node_modules/@prag-man/pragman-exp/package.json",
   ), "utf8"));
   assert.equal(installedPackage.bin.pragman, "dist/packages/cli/src/index.js");
+  const installedRoot = join(consumerDirectory, "node_modules/@prag-man/pragman-exp");
+  const events = await import(pathToFileURL(join(installedRoot, "dist/packages/events/src/index.js")).href);
+  const taskSuccessMetric = JSON.parse(await readFile(join(installedRoot, "evals/metrics/task-success.json"), "utf8"));
+  const eventValidators = events.createEventValidators([taskSuccessMetric]);
+  assert.equal(eventValidators.metric(taskSuccessMetric).ok, true);
+  assert.equal(events.sha256Digest(taskSuccessMetric).length, 64);
   installedPackage.version = "9.8.7";
   await writeFile(join(
     consumerDirectory,

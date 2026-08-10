@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/eval-candidate-approval.schema.json",
+  "title": "Immutable evaluation candidate approval decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "approval_id", "timestamp", "candidate_id", "candidate_digest", "decision", "approval_source", "reviewed_redacted_artifact_digest", "storage_scope", "append_only"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "approval_id": { "$ref": "#/$defs/uuidv7" },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "candidate_id": { "$ref": "#/$defs/uuidv7" },
+    "candidate_digest": { "$ref": "#/$defs/sha256" },
+    "decision": { "enum": ["approved", "rejected"] },
+    "approval_source": { "const": "user" },
+    "reviewed_redacted_artifact_digest": { "$ref": "#/$defs/sha256" },
+    "storage_scope": { "const": "local" },
+    "append_only": { "const": true }
+  },
+  "$defs": {
+    "uuidv7": { "type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

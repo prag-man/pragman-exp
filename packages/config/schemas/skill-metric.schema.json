@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/skill-metric.schema.json",
+  "title": "Public Pragman skill metric definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "metric_id", "version", "description", "value_type", "direction", "pass_rule", "eligible_score_sources", "eligible_verification_codes", "lifecycle_policy"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "metric_id": { "$ref": "#/$defs/slug" },
+    "version": { "$ref": "#/$defs/safeVersion" },
+    "description": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "minLength": 1, "maxLength": 1000 }] },
+    "value_type": { "enum": ["boolean", "number", "category"] },
+    "number_range": { "$ref": "#/$defs/numericRange" },
+    "boolean_values": {
+      "type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true,
+      "allOf": [
+        { "contains": { "type": "object", "additionalProperties": false, "required": ["value", "utility"], "properties": { "value": { "const": false }, "utility": { "$ref": "#/$defs/unit" } } }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "type": "object", "additionalProperties": false, "required": ["value", "utility"], "properties": { "value": { "const": true }, "utility": { "$ref": "#/$defs/unit" } } }, "minContains": 1, "maxContains": 1 }
+      ],
+      "items": { "$ref": "#/$defs/booleanValue" }
+    },
+    "categories": { "type": "array", "minItems": 2, "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/category" } },
+    "direction": { "enum": ["maximize", "minimize", "target"] },
+    "target": { "$ref": "#/$defs/measurementNumber" },
+    "target_range": { "$ref": "#/$defs/numericRange" },
+    "pass_rule": {
+      "oneOf": [
+        { "$ref": "#/$defs/equalityRule" },
+        { "$ref": "#/$defs/gteRule" },
+        { "$ref": "#/$defs/lteRule" },
+        { "$ref": "#/$defs/betweenRule" }
+      ]
+    },
+    "eligible_score_sources": { "type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true, "items": { "enum": ["deterministic", "user", "llm-judge"] } },
+    "eligible_verification_codes": { "type": "array", "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+    "lifecycle_policy": { "$ref": "#/$defs/lifecyclePolicy" }
+  },
+  "oneOf": [
+    { "required": ["number_range"], "properties": { "number_range": {}, "boolean_values": false, "categories": false } },
+    { "required": ["boolean_values"], "properties": { "number_range": false, "boolean_values": {}, "categories": false } },
+    { "required": ["categories"], "properties": { "number_range": false, "boolean_values": false, "categories": {} } }
+  ],
+  "allOf": [
+    { "if": { "properties": { "value_type": { "const": "number" } } }, "then": { "required": ["number_range"], "properties": { "number_range": {} } } },
+    { "if": { "properties": { "value_type": { "const": "boolean" } } }, "then": { "required": ["boolean_values"], "properties": { "boolean_values": {} } } },
+    { "if": { "properties": { "value_type": { "const": "category" } } }, "then": { "required": ["categories"], "properties": { "categories": {} } } },
+    {
+      "if": { "properties": { "direction": { "const": "target" } } },
+      "then": {
+        "properties": { "value_type": { "const": "number" } },
+        "oneOf": [
+          { "required": ["target"], "properties": { "target": {}, "target_range": false } },
+          { "required": ["target_range"], "properties": { "target": false, "target_range": {} } }
+        ]
+      },
+      "else": { "properties": { "target": false, "target_range": false } }
+    }
+  ],
+  "$defs": {
+    "secretFree": { "type": "string", "not": { "pattern": "(?:sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,})" } },
+    "slug": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }] },
+    "safeVersion": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$" }] },
+    "measurementNumber": { "type": "number", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+    "numericRange": { "type": "object", "additionalProperties": false, "required": ["min", "max"], "properties": { "min": { "$ref": "#/$defs/measurementNumber" }, "max": { "$ref": "#/$defs/measurementNumber" } } },
+    "booleanValue": { "type": "object", "additionalProperties": false, "required": ["value", "utility"], "properties": { "value": { "type": "boolean" }, "utility": { "$ref": "#/$defs/unit" } } },
+    "category": { "type": "object", "additionalProperties": false, "required": ["id", "rank", "passing", "utility"], "properties": { "id": { "$ref": "#/$defs/slug" }, "rank": { "type": "integer", "minimum": 0, "maximum": 100 }, "passing": { "type": "boolean" }, "utility": { "$ref": "#/$defs/unit" } } },
+    "equalityRule": { "type": "object", "additionalProperties": false, "required": ["operator", "value"], "properties": { "operator": { "const": "eq" }, "value": { "oneOf": [{ "type": "boolean" }, { "$ref": "#/$defs/measurementNumber" }, { "$ref": "#/$defs/slug" }] } } },
+    "gteRule": { "type": "object", "additionalProperties": false, "required": ["operator", "value"], "properties": { "operator": { "const": "gte" }, "value": { "$ref": "#/$defs/measurementNumber" } } },
+    "lteRule": { "type": "object", "additionalProperties": false, "required": ["operator", "value"], "properties": { "operator": { "const": "lte" }, "value": { "$ref": "#/$defs/measurementNumber" } } },
+    "betweenRule": { "type": "object", "additionalProperties": false, "required": ["operator", "min", "max"], "properties": { "operator": { "const": "between" }, "min": { "$ref": "#/$defs/measurementNumber" }, "max": { "$ref": "#/$defs/measurementNumber" } } },
+    "unit": { "type": "number", "minimum": 0, "maximum": 1 },
+    "counter": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "lifecyclePolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["minimum_trials_per_arm", "minimum_comparable_environments", "minimum_pass_rate", "regression_tolerance", "material_lift", "non_inferiority_margin", "efficiency_materiality"],
+      "properties": {
+        "minimum_trials_per_arm": { "type": "integer", "minimum": 2, "maximum": 20 },
+        "minimum_comparable_environments": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "minimum_pass_rate": { "$ref": "#/$defs/unit" },
+        "regression_tolerance": { "$ref": "#/$defs/unit" },
+        "material_lift": { "$ref": "#/$defs/unit" },
+        "non_inferiority_margin": { "$ref": "#/$defs/unit" },
+        "efficiency_materiality": {
+          "type": "object", "additionalProperties": false,
+          "required": ["duration_ms", "retries", "rework_cycles", "tool_calls"],
+          "properties": {
+            "duration_ms": { "$ref": "#/$defs/counter" },
+            "retries": { "$ref": "#/$defs/counter" },
+            "rework_cycles": { "$ref": "#/$defs/counter" },
+            "tool_calls": { "$ref": "#/$defs/counter" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -40,6 +40,13 @@
       "required": ["enabled"],
       "properties": { "enabled": { "const": false } }
     },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": { "local_events": true },
+      "required": ["local_events"],
+      "properties": { "local_events": { "type": "boolean", "default": true } }
+    },
     "routing": {
       "type": "object",
       "additionalProperties": false,
