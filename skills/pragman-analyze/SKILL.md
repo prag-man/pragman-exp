@@ -9,7 +9,7 @@ Produce a decision-grade analysis grounded in observable evidence. A good result
 
 ## Workflow
 
-1. Define the subject, intended outcome, time boundary, systems and people in scope, and decision this analysis should enable. Distinguish successful, drifted, blocked, and incomplete work.
+1. Define the subject, intended outcome, time boundary, systems and people in scope, and decision this analysis should enable. Distinguish successful, drifted, blocked, and incomplete work. For expanded work, classify each addition as necessary discovery, an approved scope change, or avoidable drift against the original decision boundary and contemporaneous decisions. If that evidence is missing, leave the classification unresolved.
 2. Build an evidence index before interpreting. Prefer artifacts, diffs, tests, event aggregates, decisions, timestamps, and user-supplied context. Reference sensitive evidence by alias; do not copy private source bodies into the report.
 3. Separate observed fact, sourced context, and inference. Attach `low`, `medium`, or `high` confidence to every material claim. Record missing evidence instead of inventing certainty.
 4. Analyze every dimension in [references/analysis-contract.md](references/analysis-contract.md). Preserve both strengths and failures; a successful outcome can still contain waste, and a blocked outcome can still reveal a good decision.
