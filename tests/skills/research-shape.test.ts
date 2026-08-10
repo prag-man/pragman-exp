@@ -20,6 +20,9 @@ test("research selects the lightest sufficient method and covers all required sc
   assert.match(artifact.skill, /decision it must enable/i);
   assert.match(artifact.skill, /independent fan-out/i);
   assert.match(artifact.skill, /source plan and egress boundary/i);
+  assert.match(artifact.skill, /minimum evidence.+deeper research/is);
+  assert.match(artifact.skill, /direct support.+interpretation/is);
+  assert.match(artifact.skill, /revisit or switch/i);
   assert.deepEqual(artifact.baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), ["quick", "technical-source-first", "fanout", "decision", "internal", "provided-text-control"]);
   assert.deepEqual(artifact.baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), artifact.forward.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id));
   assert.equal(artifact.baseline.scenarios.some((scenario: { case_type: string }) => scenario.case_type === "non-trigger"), true);

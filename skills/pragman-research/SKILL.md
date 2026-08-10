@@ -9,18 +9,18 @@ Research starts with the decision it must enable. Match effort to consequence, u
 
 ## Workflow
 
-1. Define the decision, audience, deliverable, deadline, required freshness, acceptable uncertainty, and excluded scope. Ask only for missing constraints that materially change method, access, privacy, or cost.
+1. Define the decision, audience, deliverable, deadline, required freshness, acceptable uncertainty, and excluded scope. Ask only for missing constraints that materially change method, access, privacy, or cost. For quick reconnaissance, state before retrieval the minimum evidence needed to choose between stopping and deeper research, plus a time or source cap.
 2. Select the lightest sufficient method from [references/research-methods.md](references/research-methods.md). Use independent fan-out only when lanes do not depend on one another and their outputs can be reconciled deterministically.
 3. Route needed capabilities through `pragman-router`. Reuse configured research, browser, repository, and workspace providers. If no compatible provider is healthy, disclose the limitation and use the native/manual fallback; never imply a search or connector call occurred when it did not.
 4. Declare the source plan and egress boundary before retrieval. Search only approved sources and connectors. Never upload internal or sensitive material to an external provider without explicit approval.
 5. Prefer primary, authoritative, and current evidence. Record source, publication/event date, retrieval date, direct support, and important limitations. For technical research, official documentation and original papers outrank summaries.
-6. Keep sourced fact, source claim, and inference distinct. Triangulate high-impact claims, preserve meaningful disagreement, and state when freshness or access makes an answer provisional.
+6. Keep sourced fact, source claim, and inference distinct. In the synthesis, label what sources directly establish as **Direct support** and what follows from reasoning as **Interpretation**; keep unknowns explicit. Triangulate high-impact claims, preserve meaningful disagreement, and state when freshness or access makes an answer provisional.
 7. Stop when the decision threshold is met or additional research has lower expected value than acting or testing. Do not confuse more sources with greater confidence.
-8. Deliver the answer first, followed by evidence, disagreements, confidence, gaps, and recommended action. Link directly to sources when the host supports it.
+8. Deliver the answer first, followed by evidence, disagreements, confidence, gaps, and recommended action. For a recommendation, name observable signals or thresholds that would make the team revisit or switch it. Link directly to sources when the host supports it.
 
 ## Method shortcuts
 
-- Quick reconnaissance: establish vocabulary, current state, and whether deeper work is justified.
+- Quick reconnaissance: establish vocabulary and current state, then finish with an explicit stop-or-deepen decision against the predeclared evidence threshold.
 - Technical source-first: inspect official specifications, code, changelogs, papers, and primary issue trackers.
 - Deep multi-source: build a claim ledger and triangulate material findings across source types.
 - Independent fan-out: split bounded questions, run concurrently, then reconcile duplicates and conflicts.
