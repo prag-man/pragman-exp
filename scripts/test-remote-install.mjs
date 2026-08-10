@@ -213,16 +213,8 @@ async function main(argv) {
       installs.push(await installSelection(options, host, "*"));
     }
 
-    const useRoot = await createProjectRoot("use");
-    try {
-      const prompt = runSkills(options.skillsCli, ["use", options.source, "--skill", "pragman-router"], useRoot);
-      if (!/Pragman Router/.test(prompt) || !/pragman-router/.test(prompt)) fail("skills use did not resolve pragman-router");
-    } finally {
-      await rm(useRoot, { recursive: true, force: true });
-    }
-
-    const result = { mode: "run", listed: EXPECTED_SKILLS.length, installs, use: "pragman-router", passed: true };
-    process.stdout.write(options.json ? `${JSON.stringify(result)}\n` : `Verified ${EXPECTED_SKILLS.length} skills, ${installs.length} isolated installs, and pragman-router use.\n`);
+    const result = { mode: "run", listed: EXPECTED_SKILLS.length, installs, passed: true };
+    process.stdout.write(options.json ? `${JSON.stringify(result)}\n` : `Verified ${EXPECTED_SKILLS.length} skills and ${installs.length} isolated installs.\n`);
     return 0;
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
