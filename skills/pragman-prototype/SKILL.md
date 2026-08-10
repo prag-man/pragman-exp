@@ -15,7 +15,7 @@ Turn uncertainty into something the user can inspect, click, and decide on. A pr
 4. Create one self-contained HTML flow by default. Add variants only when each represents a meaningful decision alternative; label the hypothesis and trade-off for every variant.
 5. Use [assets/prototype.html](assets/prototype.html) as the portable fallback, or the deterministic report renderer when the Pragman runtime is available. Follow [references/prototype-contract.md](references/prototype-contract.md).
 6. Preview locally. Exercise every control, keyboard path, responsive breakpoint, landmark, and feedback action. Confirm there are no network requests or broken targets.
-7. Ask for structured feedback: `Keep`, `Change`, or `Stop`, followed by the reason and the next uncertainty. Iterate only on feedback that improves the decision.
+7. Present an actionable feedback record with the artifact or variants: `Decision: Keep | Change | Stop`, `Reason`, `Next uncertainty`, and the artifact or variant reference. Do not merely say feedback will be structured. Iterate only on feedback that improves the decision.
 8. When a direction is approved, produce a shaped task contract covering behavior, constraints, acceptance evidence, non-goals, and reusable project context. Do not copy prototype code into production by default.
 
 ## Output
