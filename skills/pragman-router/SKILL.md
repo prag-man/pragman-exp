@@ -25,6 +25,8 @@ Shape only as much as the route requires, then select capabilitiesâ€”not brandsâ
 - Deep: ambiguity, cross-system scope, high uncertainty, costly reversal, or high downstream impact; shape before execution.
 - Operational: credentials, infrastructure, deployment, external accounts, destructive/live mutation; separate preparation from mutation.
 
+Scale the explanation to the decision. On the Fast lane, lead with the direct answer or next action, then use at most one short sentence to name the lane and lightest sufficient capability. Omit the normalized input, full contract, score table, rejected-provider inventory, and approval catalogue unless they change a choice or the user asks for them.
+
 If no eligible provider exists, disclose the missing capability and offer a specific install recommendation, compatible equal-trust fallback, or bounded manual handoff. Never claim a provider ran or succeeded without host evidence.
 
 ## CLI unavailable
