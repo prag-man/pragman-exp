@@ -17,10 +17,18 @@ const SENSITIVITIES = new Set(["public", "internal", "confidential", "restricted
 function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value); }
 function strings(value: unknown): value is string[] { return Array.isArray(value) && value.every((entry) => typeof entry === "string" && entry.length > 0); }
 
+function conflictResolutions(value: unknown): value is Record<string, string> {
+  return value === undefined || (object(value) && Object.entries(value).every(([path, choice]) => (
+    path.startsWith("/") && path.length <= 256 && !path.includes("..")
+      && typeof choice === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(choice)
+  )));
+}
+
 function assertRouteInput(value: unknown): asserts value is RouteInput {
   if (!object(value)) throw new RouterError("INVALID_INPUT", "Route input must be an object");
   const required = ["request", "task_family", "desired_outcome", "deliverable_kind", "execution_mode", "declared_side_effects", "data_inputs", "egress_destinations", "urgency", "uncertainties", "scope_systems", "estimated_sessions", "downstream_impact", "reversibility", "requested_capabilities", "workspace", "project"];
-  if (!required.every((field) => field in value) || Object.keys(value).some((field) => !required.includes(field))) throw new RouterError("INVALID_INPUT", "Route input fields are incomplete or unknown");
+  const allowed = [...required, "resolved_secondary_conflicts"];
+  if (!required.every((field) => field in value) || Object.keys(value).some((field) => !allowed.includes(field))) throw new RouterError("INVALID_INPUT", "Route input fields are incomplete or unknown");
   const valid = typeof value.request === "string" && value.request.trim().length > 0 && value.request.length <= 20_000
     && FAMILIES.has(String(value.task_family)) && typeof value.desired_outcome === "string" && value.desired_outcome.trim().length > 0 && value.desired_outcome.length <= 2_000
     && DELIVERABLES.has(String(value.deliverable_kind)) && MODES.has(String(value.execution_mode))
@@ -29,7 +37,8 @@ function assertRouteInput(value: unknown): asserts value is RouteInput {
     && LEVELS.has(String(value.downstream_impact)) && (value.reversibility === "reversible" || value.reversibility === "costly" || value.reversibility === "irreversible")
     && (value.workspace === null || typeof value.workspace === "string") && (value.project === null || typeof value.project === "string")
     && Array.isArray(value.data_inputs) && value.data_inputs.every((entry) => object(entry) && typeof entry.id === "string" && typeof entry.source_alias === "string" && typeof entry.category === "string" && SENSITIVITIES.has(String(entry.sensitivity)))
-    && Array.isArray(value.uncertainties) && value.uncertainties.every((entry) => object(entry) && typeof entry.id === "string" && typeof entry.description === "string" && LEVELS.has(String(entry.impact)));
+    && Array.isArray(value.uncertainties) && value.uncertainties.every((entry) => object(entry) && typeof entry.id === "string" && typeof entry.description === "string" && LEVELS.has(String(entry.impact)))
+    && conflictResolutions(value.resolved_secondary_conflicts);
   if (!valid) throw new RouterError("INVALID_INPUT", "Route input contains invalid values");
 }
 
@@ -55,6 +64,7 @@ export async function executeRouteCommand(arguments_: CliArguments, io: CommandI
   try {
     const input = await readInput(arguments_, io);
     assertRouteInput(input);
+    const resolutions = (input as RouteInput & { resolved_secondary_conflicts?: Record<string, string> }).resolved_secondary_conflicts ?? {};
     const { registry, host, warnings, personalPreferences } = await loadRuntimeProviderRegistry(arguments_);
     const context = await resolveRouteContext(arguments_, input);
     const requested = registry.validateRequestedCapabilities(context.input.requested_capabilities);
@@ -69,7 +79,12 @@ export async function executeRouteCommand(arguments_: CliArguments, io: CommandI
       routingRules: context.routingRules,
       projectPreferences: context.projectPreferences,
       workspacePreferences: context.workspacePreferences,
-      personalPreferences,
+      personalPreferences: [...context.personalProfilePreferences, ...personalPreferences],
+      prohibitedProviders: context.personalProfileAvoidances,
+      resolvedSecondaryConflicts: resolutions,
+      assumptions: Object.entries(resolutions).sort(([left], [right]) => left.localeCompare(right))
+        .map(([path, workspace]) => `resolved-secondary-conflict:${path}:${workspace}`),
+      ...(context.preferredWorkflowWeight ? { preferredWorkflowWeight: context.preferredWorkflowWeight } : {}),
       ...(context.explicitLane ? { explicitLane: context.explicitLane } : {}),
       ...(arguments_.provider ? { explicitProviders: [arguments_.provider] } : {}),
     });

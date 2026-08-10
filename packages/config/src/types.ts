@@ -75,11 +75,13 @@ export type ContextMode = "personal-only" | "workspace-only" | "project-linked";
 export interface LoadedConfigurationContext {
   mode: ContextMode;
   personal: PersonalConfig;
+  profile?: PersonalProfile;
   primaryWorkspace?: WorkspaceConfig;
   project?: ProjectManifest;
   additionalWorkspaces: WorkspaceConfig[];
   paths: {
     personal: string;
+    profile?: string;
     primaryWorkspace?: string;
     project?: string;
     additionalWorkspaces: string[];

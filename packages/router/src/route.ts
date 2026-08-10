@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import { deriveApprovals } from "./approvals.ts";
 import { deriveLane, laneReasons } from "./lanes.ts";
@@ -76,6 +77,14 @@ function sequenceForExisting(contract: TaskContract, providers: Provider[]): Pro
   }) };
 }
 
+function conflictResolutionMatches(conflict: { path: string; values: unknown[] }, resolutions: Record<string, unknown>): boolean {
+  if (!Object.hasOwn(resolutions, conflict.path)) return false;
+  const selected = resolutions[conflict.path];
+  return conflict.values.some((candidate) => isDeepStrictEqual(candidate, selected)
+    || (typeof selected === "string" && candidate !== null && typeof candidate === "object"
+      && "workspaceId" in candidate && (candidate as { workspaceId?: unknown }).workspaceId === selected));
+}
+
 export function routeTask(input: RouteInput, options: RouteOptions): RouteResult {
   const initialContext = context(input, options);
   const routeId = options.routeId ?? uuidV7();
@@ -91,7 +100,13 @@ export function routeTask(input: RouteInput, options: RouteOptions): RouteResult
   const routeExplanation = explanation(laneInfo.reasons);
   if (initialContext.error) return { status: "needs-input", contextMode: initialContext.mode, code: initialContext.error.code, requiredInput: initialContext.error.requiredInput, explanation: routeExplanation };
 
-  const unresolvedSecondary = (options.secondaryConflicts ?? []).filter((conflict) => !(conflict.path in (options.resolvedSecondaryConflicts ?? {})));
+  const secondaryConflicts = options.secondaryConflicts ?? [];
+  const resolutions = options.resolvedSecondaryConflicts ?? {};
+  const conflictPaths = new Set(secondaryConflicts.map((conflict) => conflict.path));
+  if (Object.keys(resolutions).some((path) => !conflictPaths.has(path))) {
+    throw new RouterError("INVALID_INPUT", "Secondary conflict resolution refers to an unknown conflict path");
+  }
+  const unresolvedSecondary = secondaryConflicts.filter((conflict) => !conflictResolutionMatches(conflict, resolutions));
   if (unresolvedSecondary.length > 0) return { status: "needs-input", contextMode: initialContext.mode, code: "NEEDS_INPUT", requiredInput: `resolve-secondary-workspace-conflict:${unresolvedSecondary[0]!.path}`, explanation: routeExplanation };
 
   const rules = applyRoutingRules({ ...input, workspace: initialContext.workspace }, options.routingRules ?? [], initialLane);
@@ -146,7 +161,7 @@ export function routeTask(input: RouteInput, options: RouteOptions): RouteResult
     workspace: initialContext.workspace,
     project: input.project,
     in_scope: [...(options.inScope ?? [])], out_of_scope: [...(options.outOfScope ?? [])], assumptions: [...(options.assumptions ?? [])],
-    unresolved_conflicts: [...new Set((options.secondaryConflicts ?? []).map((conflict) => conflict.path))],
+    unresolved_conflicts: [...new Set(unresolvedSecondary.map((conflict) => conflict.path))],
     capabilities: [...requiredCapabilities], providers: sequence.providers.map((entry) => entry.provider.id), provider_sequence_policy: policy,
     allowed_side_effects: [...input.declared_side_effects], data_inputs: structuredClone(input.data_inputs), effective_sensitivity: effectiveSensitivity(input),
     egress_approvals: structuredClone(options.egressApprovals ?? []), proof: [...(options.proof ?? [])], stop_conditions: [...(options.stopConditions ?? [])],
