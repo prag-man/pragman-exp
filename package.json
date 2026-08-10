@@ -11,6 +11,7 @@
   },
   "files": [
     "dist/",
+    "evals/fixtures/",
     "evals/metrics/",
     "packages/config/schemas/",
     "scripts/"
@@ -19,7 +20,7 @@
     "build": "tsc",
     "prepack": "npm run build",
     "test": "node scripts/run-tests.mjs",
-    "evals": "node scripts/run-evals.mjs"
+    "evals": "node scripts/run-evals.mjs --mode skill-eval evals/fixtures/skill-events/baseline.json --observed evals/fixtures/skill-events/forward.json --output -"
   },
   "dependencies": {
     "ajv": "^8.17.1",
