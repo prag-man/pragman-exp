@@ -1,11 +1,12 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
 import { satisfiesVersionRange, type HealthState, type HostId, type ProviderDefinition } from "../packages/provider-registry/src/index.ts";
 import type { SkillEvent } from "../packages/events/src/types.ts";
 import {
-  boundedContextContentDigest,
   createBoundedContext,
+  providerDefinitionDigest,
+  providerHandoffContentDigest,
   type AdapterTaskContract,
   type BoundedContext,
   type CancellationResult,
@@ -59,10 +60,6 @@ function uuidV7(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function sha256(value: unknown): string {
-  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
-}
-
 function boundedSummary(value: string): string {
   return value.length <= 1_000 ? value : `${value.slice(0, 997)}...`;
 }
@@ -70,6 +67,7 @@ function boundedSummary(value: string): string {
 function enforceContextPolicy(provider: ProviderDefinition, context: BoundedContext): void {
   const classes = new Set(provider.context_policy.accepted_classes);
   const sensitivities = [
+    context.task_contract.effective_sensitivity,
     ...context.summaries.map((entry) => entry.sensitivity),
     ...context.redacted_excerpts.map((entry) => entry.sensitivity),
   ];
@@ -81,6 +79,24 @@ function enforceContextPolicy(provider: ProviderDefinition, context: BoundedCont
       && (!classes.has("redacted-excerpt") || !provider.context_policy.accepts_redacted_excerpts))
     || exceedsSensitivity) {
     throw Object.assign(new Error("Bounded context violates the provider policy"), { code: "CONTEXT_POLICY_VIOLATION" });
+  }
+}
+
+function enforceProviderBinding(provider: ProviderDefinition, contract: AdapterTaskContract): void {
+  if (!contract.providers.includes(provider.id)) {
+    throw Object.assign(new Error("Provider was not selected by the routed contract"), { code: "PROVIDER_NOT_SELECTED" });
+  }
+  const assignment = contract.provider_assignments.find((entry) => entry.provider_id === provider.id);
+  if (!assignment) {
+    throw Object.assign(new Error("Provider assignment is missing from the routed contract"), { code: "PROVIDER_CAPABILITY_MISMATCH" });
+  }
+  const providerCapabilities = new Set(provider.capabilities);
+  if (assignment.capabilities.some((capability) => !providerCapabilities.has(capability))) {
+    throw Object.assign(new Error("Provider does not cover its assigned capabilities"), { code: "PROVIDER_CAPABILITY_MISMATCH" });
+  }
+  const allowedSideEffects = new Set<string>(contract.allowed_side_effects);
+  if (provider.side_effects.some((sideEffect) => !allowedSideEffects.has(sideEffect))) {
+    throw Object.assign(new Error("Provider declares a side effect outside the routed allowance"), { code: "PROVIDER_SIDE_EFFECT_MISMATCH" });
   }
 }
 
@@ -105,8 +121,9 @@ function disclosedFields(context: BoundedContext): string[] {
   ])].sort();
 }
 
-function disclosureSensitivity(context: BoundedContext): EgressApproval["effective_sensitivity"] {
+function disclosureSensitivity(contract: AdapterTaskContract, context: BoundedContext): EgressApproval["effective_sensitivity"] {
   const values = [
+    contract.effective_sensitivity,
     ...context.summaries.map((entry) => entry.sensitivity),
     ...context.redacted_excerpts.map((entry) => entry.sensitivity),
   ];
@@ -114,6 +131,18 @@ function disclosureSensitivity(context: BoundedContext): EgressApproval["effecti
     (highest, value) => SENSITIVITY_RANK[value] > SENSITIVITY_RANK[highest] ? value : highest,
     "public",
   );
+}
+
+function approvalAliases(context: BoundedContext): string[] {
+  return [...new Set(["task-contract", ...disclosureAliases(context)])].sort();
+}
+
+function approvalCategories(context: BoundedContext): string[] {
+  return [...new Set(["route-request", ...disclosureCategories(context)])].sort();
+}
+
+function approvalFields(context: BoundedContext): string[] {
+  return [...new Set(["effective-sensitivity", "outcome", "request-digest", ...disclosedFields(context)])].sort();
 }
 
 function approvalError(code: string, message: string): Error {
@@ -182,21 +211,20 @@ export class ConcreteHostAdapter implements HostAdapter {
   }
 
   async #authorizeDisclosure(provider: ProviderDefinition, contract: AdapterTaskContract, context: BoundedContext): Promise<void> {
-    const hasDisclosure = context.summaries.length > 0 || context.redacted_excerpts.length > 0;
-    if (!hasDisclosure) return;
     if (contract.egress_approvals.length === 0) {
-      throw approvalError("EGRESS_APPROVAL_REQUIRED", "Bounded disclosure requires egress approval");
+      throw approvalError("EGRESS_APPROVAL_REQUIRED", "External task-contract disclosure requires egress approval");
     }
-    const aliases = disclosureAliases(context);
-    const categories = disclosureCategories(context);
-    const fields = disclosedFields(context);
-    const expectedSensitivity = disclosureSensitivity(context);
+    const aliases = approvalAliases(context);
+    const categories = approvalCategories(context);
+    const fields = approvalFields(context);
+    const expectedSensitivity = disclosureSensitivity(contract, context);
     const now = this.#now().getTime();
-    const contentDigest = boundedContextContentDigest(context);
+    const destination = { destination: "host-model" as const, destination_id: this.host };
+    const contentDigest = providerHandoffContentDigest(provider, contract, context, destination);
     const matching = contract.egress_approvals.filter((approval) => approval.route_id === contract.route_id
       && approval.provider_id === provider.id
-      && approval.destination === "host-model"
-      && approval.destination_id === this.host
+      && approval.destination === destination.destination
+      && approval.destination_id === destination.destination_id
       && isDeepStrictEqual(approval.source_aliases, aliases)
       && isDeepStrictEqual(approval.data_categories, categories)
       && isDeepStrictEqual(approval.disclosed_fields, fields)
@@ -243,7 +271,7 @@ export class ConcreteHostAdapter implements HostAdapter {
       event_type: eventType,
       skill_id: state.provider.id,
       skill_version: state.provider.source_version,
-      skill_digest: sha256(state.provider),
+      skill_digest: providerDefinitionDigest(state.provider),
       skill_type: "capability",
       host: this.host,
       host_version: this.host_version,
@@ -260,7 +288,7 @@ export class ConcreteHostAdapter implements HostAdapter {
       ablation_arm: "production",
       trigger_expected: null,
       trigger_actual: true,
-      provider_digest: sha256(state.provider),
+      provider_digest: providerDefinitionDigest(state.provider),
       eval_corpus_digest: null,
       trial_policy_digest: null,
       status,
@@ -312,8 +340,8 @@ export class ConcreteHostAdapter implements HostAdapter {
       throw Object.assign(new Error("Handoff context does not match its task contract"), { code: "CONTRACT_MISMATCH" });
     }
     const safeContract = safeContext.task_contract;
+    enforceProviderBinding(provider, safeContract);
     enforceContextPolicy(provider, safeContext);
-    await this.#authorizeDisclosure(provider, safeContract, safeContext);
     const createHandle = (
       mode: InvocationHandle["mode"],
       status: InvocationHandle["status"],
@@ -369,7 +397,14 @@ export class ConcreteHostAdapter implements HostAdapter {
       }
     }
     let observed: Awaited<ReturnType<typeof beginRuntime>> | null = null;
+    let authorizedHostDisclosure = false;
+    const authorizeHostDisclosure = async () => {
+      if (authorizedHostDisclosure) return;
+      await this.#authorizeDisclosure(provider, safeContract, safeContext);
+      authorizedHostDisclosure = true;
+    };
     if (provider.invoke.kind === "native-skill" && this.#compatibility.native_skill_invocation && this.#runtime.invokeNative) {
+      await authorizeHostDisclosure();
       observed = await beginRuntime();
       try {
         const result = await this.#runtime.invokeNative({ provider_id: provider.id, skill_id: provider.invoke.skill_id, contract: safeContract, context: safeContext });
@@ -383,6 +418,7 @@ export class ConcreteHostAdapter implements HostAdapter {
       ? provider.invoke.prompt
       : `Invoke ${provider.invoke.skill_id} for route_id ${safeContract.route_id} at router_depth ${safeContract.router_depth}. Return only the declared provider result contract.`;
     if (this.#compatibility.prompt_handoff && this.#runtime.handoffPrompt) {
+      await authorizeHostDisclosure();
       observed ??= await beginRuntime();
       try {
         const result = await this.#runtime.handoffPrompt({ provider_id: provider.id, prompt, contract: safeContract, context: safeContext });

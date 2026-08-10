@@ -13,6 +13,7 @@ test("route resolves personal/workspace/project modes and returns an immutable e
   if (personal.status !== "ready") return;
   assert.equal(personal.contextMode, "personal-only");
   assert.deepEqual(personal.contract.providers, ["p:all"]);
+  assert.deepEqual(personal.contract.provider_assignments, [{ provider_id: "p:all", capabilities: ["plan", "build"] }]);
   assert.ok(Object.isFrozen(personal.contract));
   const linked = routeTask({ ...base, project: "app", workspace: null }, { providers: [provider("p:all", ["plan", "build"])], capabilities, activeHost: "codex", allowedSideEffects: ["project-file-write"], projectLinks: { app: "acme" } });
   assert.equal(linked.status === "ready" ? linked.contract.workspace : null, "acme");

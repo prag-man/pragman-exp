@@ -182,6 +182,7 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
     unresolved_conflicts: [],
     capabilities: ["code-review"],
     providers: ["pragman:builtin-review"],
+    provider_assignments: [{ provider_id: "pragman:builtin-review", capabilities: ["code-review"] }],
     provider_sequence_policy: "stop",
     allowed_side_effects: [],
     data_inputs: [],
@@ -193,7 +194,11 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
   };
   const validateContract = ajv.compile(schemas["task-contract.schema.json"]);
   assert.equal(validateContract(contract), true, JSON.stringify(validateContract.errors));
-  assert.equal(validateContract({ ...contract, providers: ["gstack:investigate"] }), true);
+  assert.equal(validateContract({
+    ...contract,
+    providers: ["gstack:investigate"],
+    provider_assignments: [{ provider_id: "gstack:investigate", capabilities: ["code-review"] }],
+  }), true);
   assert.equal(validateContract({ ...contract, capabilities: ["gstack:investigate"] }), false);
   assert.equal(validateContract({ ...contract, raw_private_path: "/Users/example/private" }), false);
 

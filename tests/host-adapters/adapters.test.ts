@@ -4,8 +4,8 @@ import test from "node:test";
 
 import {
   BoundedContextError,
-  boundedContextContentDigest,
   createBoundedContext,
+  providerHandoffContentDigest,
   type EgressApproval,
   type HostRuntime,
   type ProviderResult,
@@ -20,6 +20,7 @@ const digest = (character: string) => character.repeat(64);
 const excerptDigest = (value: string) => createHash("sha256").update(Buffer.from(value, "utf8")).digest("hex");
 const routeId = "01915b8c-7f2d-7a51-a9c0-1d4cb73b10ab";
 const approvalId = "01915b8c-7f2d-7a51-a9c0-1d4cb73b10ac";
+const approvedNow = () => new Date("2026-08-10T12:00:00Z");
 const provider = (kind: "native-skill" | "prompt-handoff" | "manual" = "native-skill"): ProviderDefinition => ({
   schema_version: 1,
   id: "gstack:investigate",
@@ -45,7 +46,10 @@ const contract = {
   request_digest: digest("a"),
   outcome: "Find the root cause",
   capabilities: ["diagnose-software-failure"],
+  providers: ["gstack:investigate"],
+  provider_assignments: [{ provider_id: "gstack:investigate", capabilities: ["diagnose-software-failure"] }],
   allowed_side_effects: ["read-files", "run-commands"],
+  effective_sensitivity: "internal" as const,
   egress_approvals: [],
 };
 
@@ -72,17 +76,53 @@ const approvedContext = (
     expires_at: "2026-08-10T13:00:00Z",
     destination: "host-model",
     destination_id: "codex",
-    source_aliases: ["issue-summary", "log-excerpt"],
-    data_categories: ["incident", "logs"],
-    disclosed_fields: ["error-log", "failure-summary"],
+    source_aliases: ["issue-summary", "log-excerpt", "task-contract"],
+    data_categories: ["incident", "logs", "route-request"],
+    disclosed_fields: ["effective-sensitivity", "error-log", "failure-summary", "outcome", "request-digest"],
     effective_sensitivity: "confidential",
     purpose: "Invoke the selected provider with bounded context",
     retention: "provider-declared",
     further_calls_allowed: false,
-    content_digest: boundedContextContentDigest(disclosure),
+    content_digest: providerHandoffContentDigest(
+      provider(), contract, disclosure, { destination: "host-model", destination_id: "codex" },
+    ),
     ...overrides,
   };
   const approvedContract = { ...contract, egress_approvals: [approval] };
+  return {
+    approval,
+    contract: approvedContract,
+    context: createBoundedContext({ task_contract: approvedContract, ...disclosure }),
+  };
+};
+
+const approvedEmptyContext = (
+  destinationId: "codex" | "claude-code" | "cursor",
+  selectedProvider: ProviderDefinition = provider(),
+) => {
+  const disclosure = { summaries: [], redacted_excerpts: [] };
+  const routedContract = { ...contract, providers: [selectedProvider.id] };
+  const approval: EgressApproval = {
+    schema_version: 1,
+    approval_id: approvalId,
+    route_id: routeId,
+    provider_id: selectedProvider.id,
+    approved_at: "2026-08-10T11:00:00Z",
+    expires_at: "2026-08-10T13:00:00Z",
+    destination: "host-model",
+    destination_id: destinationId,
+    source_aliases: ["task-contract"],
+    data_categories: ["route-request"],
+    disclosed_fields: ["effective-sensitivity", "outcome", "request-digest"],
+    effective_sensitivity: routedContract.effective_sensitivity,
+    purpose: "Invoke the selected provider under the routed contract",
+    retention: "provider-declared",
+    further_calls_allowed: false,
+    content_digest: providerHandoffContentDigest(
+      selectedProvider, routedContract, disclosure, { destination: "host-model", destination_id: destinationId },
+    ),
+  };
+  const approvedContract = { ...routedContract, egress_approvals: [approval] };
   return {
     approval,
     contract: approvedContract,
@@ -110,14 +150,14 @@ test("bounded context accepts only compact summaries and byte-bound redacted exc
     ...context,
     redacted_excerpts: [{ ...context.redacted_excerpts[0], approved: true }],
   }), BoundedContextError);
-  assert.throws(() => createBoundedContext({
+  assert.doesNotThrow(() => createBoundedContext({
     task_contract: contract,
     summaries: [{
       source_alias: "issue-summary", data_category: "incident", disclosed_field: "failure-summary",
       sensitivity: "internal", summary: "unapproved",
     }],
     redacted_excerpts: [],
-  }), BoundedContextError);
+  }));
 });
 
 test("Codex invokes native skills, propagates cancellation, and never upgrades unverified success", async () => {
@@ -131,9 +171,11 @@ test("Codex invokes native skills, propagates cancellation, and never upgrades u
     },
     async sessionSources() { return []; },
   };
-  const adapter = createCodexHostAdapter({ host_version: "1.4.0", runtime });
-  const context = createBoundedContext({ task_contract: contract, summaries: [], redacted_excerpts: [] });
-  const handle = await adapter.invoke(provider(), contract, context);
+  const approved = approvedEmptyContext("codex");
+  const adapter = createCodexHostAdapter({
+    host_version: "1.4.0", runtime, now: approvedNow, verify_egress_approval: async () => true,
+  });
+  const handle = await adapter.invoke(provider(), approved.contract, approved.context);
   assert.equal(handle.status, "running");
   const result = await adapter.collect(handle);
   assert.deepEqual(result, {
@@ -147,7 +189,7 @@ test("Codex invokes native skills, propagates cancellation, and never upgrades u
     error: { code: "UNVERIFIED_SUCCESS", retryable: false },
   } satisfies ProviderResult);
   assert.deepEqual(await adapter.cancel(handle), { cancelled: false, reason: "NOT_ACTIVE" });
-  const cancellable = await adapter.invoke(provider(), contract, context);
+  const cancellable = await adapter.invoke(provider(), approved.contract, approved.context);
   assert.deepEqual(await adapter.cancel(cancellable), { cancelled: true, reason: null });
   assert.equal((await adapter.collect(cancellable)).status, "cancelled");
   assert.deepEqual(calls, [
@@ -178,12 +220,10 @@ test("host adapters bind bounded context to the exact contract and enforce provi
     redacted_excerpts: [],
   };
   const internalApproval: EgressApproval = {
-    ...approvedContext().approval,
-    source_aliases: ["internal"],
-    data_categories: ["incident"],
-    disclosed_fields: ["failure-summary"],
-    effective_sensitivity: "internal",
-    content_digest: boundedContextContentDigest(internalDisclosure),
+    ...approvedContext({}, internalDisclosure).approval,
+    source_aliases: ["internal", "task-contract"],
+    data_categories: ["incident", "route-request"],
+    disclosed_fields: ["effective-sensitivity", "failure-summary", "outcome", "request-digest"],
   };
   const internalContract = { ...contract, egress_approvals: [internalApproval] };
   const internal = createBoundedContext({ task_contract: internalContract, ...internalDisclosure });
@@ -206,7 +246,7 @@ test("provider egress is denied before runtime unless exact, current, and authen
     },
     async sessionSources() { return []; },
   };
-  const now = () => new Date("2026-08-10T12:00:00Z");
+  const now = approvedNow;
   const valid = approvedContext();
 
   await assert.rejects(
@@ -262,6 +302,157 @@ test("provider egress is denied before runtime unless exact, current, and authen
   assert.equal(receivedApprovalProvider, provider().id);
 });
 
+test("external invocation requires authenticated approval for the task-contract disclosure", async () => {
+  let invoked = 0;
+  const runtime: HostRuntime = {
+    async discover() { return []; },
+    async invokeNative() { invoked += 1; return { accepted: true, execution_id: "must-not-run" }; },
+    async sessionSources() { return []; },
+  };
+  const context = createBoundedContext({ task_contract: contract, summaries: [], redacted_excerpts: [] });
+
+  await assert.rejects(
+    createCodexHostAdapter({ host_version: "1.4.0", runtime }).invoke(provider(), contract, context),
+    { code: "EGRESS_APPROVAL_REQUIRED" },
+  );
+  assert.equal(invoked, 0);
+});
+
+test("provider invocation requires complete capability coverage", async () => {
+  let invoked = 0;
+  const runtime: HostRuntime = {
+    async discover() { return []; },
+    async invokeNative() { invoked += 1; return { accepted: true, execution_id: "must-not-run" }; },
+    async sessionSources() { return []; },
+  };
+  const valid = approvedContext();
+
+  await assert.rejects(
+    createCodexHostAdapter({
+      host_version: "1.4.0", runtime, now: () => new Date("2026-08-10T12:00:00Z"),
+      verify_egress_approval: async () => true,
+    }).invoke({ ...provider(), capabilities: [] }, valid.contract, valid.context),
+    { code: "PROVIDER_CAPABILITY_MISMATCH" },
+  );
+  assert.equal(invoked, 0);
+});
+
+test("provider invocation cannot exceed the provider side-effect declaration", async () => {
+  let invoked = 0;
+  const runtime: HostRuntime = {
+    async discover() { return []; },
+    async invokeNative() { invoked += 1; return { accepted: true, execution_id: "must-not-run" }; },
+    async sessionSources() { return []; },
+  };
+  const valid = approvedContext();
+
+  await assert.rejects(
+    createCodexHostAdapter({
+      host_version: "1.4.0", runtime, now: () => new Date("2026-08-10T12:00:00Z"),
+      verify_egress_approval: async () => true,
+    }).invoke({ ...provider(), side_effects: ["read-files", "run-commands", "external-message"] }, valid.contract, valid.context),
+    { code: "PROVIDER_SIDE_EFFECT_MISMATCH" },
+  );
+  assert.equal(invoked, 0);
+});
+
+test("multi-provider handoff checks only the selected provider assignment", async () => {
+  const second = { ...provider(), id: "gstack:review", capabilities: ["review-code"] } as ProviderDefinition;
+  const routedContract = {
+    ...contract,
+    capabilities: ["diagnose-software-failure", "review-code"],
+    providers: [provider().id, second.id],
+    provider_assignments: [
+      { provider_id: provider().id, capabilities: ["diagnose-software-failure"] },
+      { provider_id: second.id, capabilities: ["review-code"] },
+    ],
+  };
+  const disclosure = { summaries: [], redacted_excerpts: [] };
+  const approval: EgressApproval = {
+    ...approvedEmptyContext("codex").approval,
+    content_digest: providerHandoffContentDigest(provider(), routedContract, disclosure, { destination: "host-model", destination_id: "codex" }),
+  };
+  const approvedContract = { ...routedContract, egress_approvals: [approval] };
+  const context = createBoundedContext({ task_contract: approvedContract, ...disclosure });
+  const runtime: HostRuntime = {
+    async discover() { return []; },
+    async invokeNative() { return { accepted: true, execution_id: "multi-provider" }; },
+    async sessionSources() { return []; },
+  };
+  const handle = await createCodexHostAdapter({
+    host_version: "1.4.0", runtime, now: approvedNow, verify_egress_approval: async () => true,
+  }).invoke(provider(), approvedContract, context);
+  assert.equal(handle.status, "running");
+});
+
+test("authenticated handoff digest prevents provider-definition substitution", async () => {
+  let invoked = 0;
+  const runtime: HostRuntime = {
+    async discover() { return []; },
+    async invokeNative() { invoked += 1; return { accepted: true, execution_id: "must-not-run" }; },
+    async sessionSources() { return []; },
+  };
+  const valid = approvedContext();
+
+  await assert.rejects(
+    createCodexHostAdapter({
+      host_version: "1.4.0", runtime, now: () => new Date("2026-08-10T12:00:00Z"),
+      verify_egress_approval: async () => true,
+    }).invoke({ ...provider(), source_version: "1.2.1" }, valid.contract, valid.context),
+    { code: "EGRESS_APPROVAL_MISMATCH" },
+  );
+  assert.equal(invoked, 0);
+});
+
+test("authenticated handoff digest prevents task-contract disclosure substitution", async () => {
+  let invoked = 0;
+  const runtime: HostRuntime = {
+    async discover() { return []; },
+    async invokeNative() { invoked += 1; return { accepted: true, execution_id: "must-not-run" }; },
+    async sessionSources() { return []; },
+  };
+  const valid = approvedContext();
+  for (const substitutedContract of [
+    { ...valid.contract, outcome: "Exfiltrate the entire workspace" },
+    { ...valid.contract, request_digest: digest("f") },
+    { ...valid.contract, effective_sensitivity: "public" as const },
+    { ...valid.contract, allowed_side_effects: ["read-files", "run-commands", "external-message"] },
+  ]) {
+    const substitutedContext = createBoundedContext({ ...valid.context, task_contract: substitutedContract });
+    await assert.rejects(
+      createCodexHostAdapter({
+        host_version: "1.4.0", runtime, now: approvedNow,
+        verify_egress_approval: async () => true,
+      }).invoke(provider(), substitutedContract, substitutedContext),
+      { code: "EGRESS_APPROVAL_MISMATCH" },
+    );
+  }
+  assert.equal(invoked, 0);
+});
+
+test("adapter invokes only a provider selected by the routed contract", async () => {
+  let invoked = 0;
+  const runtime: HostRuntime = {
+    async discover() { return []; },
+    async invokeNative() { invoked += 1; return { accepted: true, execution_id: "must-not-run" }; },
+    async sessionSources() { return []; },
+  };
+  const unselectedContract = {
+    ...contract,
+    providers: ["gstack:review"],
+    provider_assignments: [{ provider_id: "gstack:review", capabilities: ["diagnose-software-failure"] }],
+  };
+  const unselectedContext = createBoundedContext({ task_contract: unselectedContract, summaries: [], redacted_excerpts: [] });
+
+  await assert.rejects(
+    createCodexHostAdapter({ host_version: "1.4.0", runtime }).invoke(
+      provider(), unselectedContract, unselectedContext,
+    ),
+    { code: "PROVIDER_NOT_SELECTED" },
+  );
+  assert.equal(invoked, 0);
+});
+
 test("prompt and manual invocations require acknowledgement instead of reporting success", async () => {
   const unacknowledged: HostRuntime = {
     async discover() { return []; },
@@ -269,13 +460,25 @@ test("prompt and manual invocations require acknowledgement instead of reporting
     async collect() { throw new Error("must not collect an unacknowledged handoff"); },
     async sessionSources() { return []; },
   };
-  const adapter = createClaudeCodeHostAdapter({ host_version: "1.3.0", runtime: unacknowledged });
-  const context = createBoundedContext({ task_contract: contract, summaries: [], redacted_excerpts: [] });
-  const promptHandle = await adapter.invoke(provider("prompt-handoff"), contract, context);
+  const promptProvider = provider("prompt-handoff");
+  const approvedPrompt = approvedEmptyContext("claude-code", promptProvider);
+  const adapter = createClaudeCodeHostAdapter({
+    host_version: "1.3.0", runtime: unacknowledged, now: approvedNow,
+    verify_egress_approval: async () => true,
+  });
+  const promptHandle = await adapter.invoke(promptProvider, approvedPrompt.contract, approvedPrompt.context);
   assert.equal(promptHandle.status, "handoff-required");
   assert.equal((await adapter.collect(promptHandle)).status, "handoff-required");
 
-  const manualHandle = await adapter.invoke(provider("manual"), contract, context);
+  const manualContext = createBoundedContext({
+    task_contract: contract,
+    summaries: [{
+      source_alias: "issue-summary", data_category: "incident", disclosed_field: "failure-summary",
+      sensitivity: "internal", summary: "Kept local for a manual handoff.",
+    }],
+    redacted_excerpts: [],
+  });
+  const manualHandle = await adapter.invoke(provider("manual"), contract, manualContext);
   assert.equal(manualHandle.status, "handoff-required");
   assert.equal((await adapter.collect(manualHandle)).error.code, "HANDOFF_REQUIRED");
 });
@@ -293,9 +496,11 @@ test("Cursor degrades native invocation to acknowledged prompt handoff and disco
       ];
     },
   };
-  const adapter = createCursorHostAdapter({ host_version: "0.48.0", runtime });
-  const context = createBoundedContext({ task_contract: contract, summaries: [], redacted_excerpts: [] });
-  const handle = await adapter.invoke(provider(), contract, context);
+  const approved = approvedEmptyContext("cursor");
+  const adapter = createCursorHostAdapter({
+    host_version: "0.48.0", runtime, now: approvedNow, verify_egress_approval: async () => true,
+  });
+  const handle = await adapter.invoke(provider(), approved.contract, approved.context);
   assert.equal(handle.mode, "prompt-handoff");
   assert.equal(handle.status, "running");
   assert.match(prompts[0] ?? "", /route_id.*01915b8c/i);
@@ -323,7 +528,7 @@ test("host compatibility is exact and unsupported versions remain discoverable b
 test("host lifecycle observation is content-free and follows invoke, collect, and cancel terminals", async () => {
   const events: SkillEvent[] = [];
   let tick = 0;
-  const now = () => new Date(1_754_827_200_000 + (tick++ * 25));
+  const now = () => new Date(Date.parse("2026-08-10T12:00:00Z") + (tick++ * 25));
   const runtime: HostRuntime = {
     async discover() { return []; },
     async invokeNative() { return { accepted: true, execution_id: `exec-${tick}` }; },
@@ -337,12 +542,13 @@ test("host lifecycle observation is content-free and follows invoke, collect, an
     host_version: "1.4.0",
     runtime,
     now,
+    verify_egress_approval: async () => true,
     lifecycle_observer: async (event) => { events.push(event); },
   });
-  const empty = createBoundedContext({ task_contract: contract, summaries: [], redacted_excerpts: [] });
-  const completed = await adapter.invoke(provider(), contract, empty);
+  const approved = approvedEmptyContext("codex");
+  const completed = await adapter.invoke(provider(), approved.contract, approved.context);
   assert.equal((await adapter.collect(completed)).status, "succeeded");
-  const cancelled = await adapter.invoke(provider(), contract, empty);
+  const cancelled = await adapter.invoke(provider(), approved.contract, approved.context);
   assert.deepEqual(await adapter.cancel(cancelled), { cancelled: true, reason: null });
 
   assert.deepEqual(events.map((event) => [event.event_type, event.status]), [
@@ -365,10 +571,12 @@ test("observer failure never affects execution and runtime invocation failure is
   const adapter = createCodexHostAdapter({
     host_version: "1.4.0",
     runtime: failedRuntime,
+    now: approvedNow,
+    verify_egress_approval: async () => true,
     lifecycle_observer: async (event) => { eventStatuses.push([event.event_type, event.status]); },
   });
-  const empty = createBoundedContext({ task_contract: contract, summaries: [], redacted_excerpts: [] });
-  await assert.rejects(adapter.invoke(provider(), contract, empty), { code: "HOST_DOWN" });
+  const approved = approvedEmptyContext("codex");
+  await assert.rejects(adapter.invoke(provider(), approved.contract, approved.context), { code: "HOST_DOWN" });
   assert.deepEqual(eventStatuses, [["invoked", null], ["completed", "failed"]]);
 
   const healthyRuntime: HostRuntime = {
@@ -382,9 +590,11 @@ test("observer failure never affects execution and runtime invocation failure is
   const observerFails = createCodexHostAdapter({
     host_version: "1.4.0",
     runtime: healthyRuntime,
+    now: approvedNow,
+    verify_egress_approval: async () => true,
     lifecycle_observer: async () => { throw new Error("observer storage unavailable"); },
   });
-  const handle = await observerFails.invoke(provider(), contract, empty);
+  const handle = await observerFails.invoke(provider(), approved.contract, approved.context);
   assert.equal(handle.status, "running");
   assert.equal((await observerFails.collect(handle)).status, "succeeded");
 });
