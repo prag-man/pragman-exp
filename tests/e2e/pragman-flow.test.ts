@@ -6,8 +6,6 @@ import { join } from "node:path";
 import test from "node:test";
 
 const cli = new URL("../../packages/cli/src/index.ts", import.meta.url).pathname;
-const providers = new URL("../../providers/", import.meta.url).pathname;
-
 type Invocation = ReturnType<typeof spawnSync>;
 
 function invoke(home: string, args: string[], input?: unknown): Invocation {
@@ -43,8 +41,8 @@ test("the safe Pragman loop moves from initialization through a reversible appro
 
   const workspace = {
     schema_version: 1,
-    workspace_id: "vimaksh",
-    name: "Vimaksh",
+    workspace_id: "example-co",
+    name: "Example Co",
     root: workspaceRoot,
     sensitivity: "internal",
     context_sources: [{
@@ -58,7 +56,7 @@ test("the safe Pragman loop moves from initialization through a reversible appro
   const workspacePreview = data(invoke(home, ["workspace", "add", "--config", config, "--preview"], workspace), "workspace add preview");
   data(invoke(home, ["workspace", "add", "--config", config, "--apply", workspacePreview.preview_digest], workspace), "workspace add apply");
 
-  const link = { project_id: "demo-project", workspace: "vimaksh", additional_workspaces: [] };
+  const link = { project_id: "demo-project", workspace: "example-co", additional_workspaces: [] };
   const linkPreview = data(invoke(home, ["workspace", "link", "--config", config, "--project-root", projectRoot, "--preview"], link), "workspace link preview");
   const linked = data(invoke(home, ["workspace", "link", "--config", config, "--project-root", projectRoot, "--apply", linkPreview.preview_digest], link), "workspace link apply");
   assert.equal(linked.mutated, true);
@@ -66,6 +64,9 @@ test("the safe Pragman loop moves from initialization through a reversible appro
   const skillRoot = join(home, ".agents", "skills", "safe-review");
   await mkdir(skillRoot, { recursive: true });
   await writeFile(join(skillRoot, "SKILL.md"), "---\nname: safe-review\ndescription: Use when reviewing a bounded change\n---\n\n# Safe review\n\nReview only the requested diff.\n");
+  const pragmanShapeRoot = join(home, ".agents", "skills", "pragman-shape");
+  await mkdir(pragmanShapeRoot, { recursive: true });
+  await writeFile(join(pragmanShapeRoot, "SKILL.md"), "---\nname: pragman-shape\ndescription: Use when shaping a bounded experiment\n---\n\n# Pragman Shape\n");
   const scanned = data(invoke(home, ["scan", "--project-root", projectRoot]), "scan");
   assert.equal(scanned.installations.some((entry: { skill_id: string }) => entry.skill_id === "safe-review"), true);
   assert.equal(JSON.stringify(scanned).includes(skillRoot), false);
@@ -86,13 +87,13 @@ test("the safe Pragman loop moves from initialization through a reversible appro
     downstream_impact: "low",
     reversibility: "reversible",
     requested_capabilities: ["shape-task"],
-    workspace: "vimaksh",
+    workspace: "example-co",
     project: "demo-project",
   };
-  const routed = data(invoke(home, ["route", "--config", config, "--project-root", projectRoot, "--providers-dir", providers, "--host", "codex"], routeRequest), "route");
+  const routed = data(invoke(home, ["route", "--config", config, "--project-root", projectRoot, "--host", "codex"], routeRequest), "route");
   assert.equal(routed.status, "ready");
   assert.deepEqual(routed.contract.providers, ["pragman:shape"]);
-  assert.match(routed.contract.request_digest, /^sha256:[a-f0-9]{64}$/);
+  assert.match(routed.contract.request_digest, /^[a-f0-9]{64}$/);
   assert.equal(JSON.stringify(routed).includes(routeRequest.request), false);
 
   await writeFile(join(sessionRoot, "session.jsonl"), [
@@ -136,5 +137,5 @@ test("the safe Pragman loop moves from initialization through a reversible appro
   const rolledBack = data(invoke(home, ["changes", "rollback", "--config", config, "--change", changes[0].change_id, "--apply", rollbackPreview.preview_digest]), "rollback apply");
   assert.equal(rolledBack.mutated, true);
   assert.match(await readFile(join(config, "config.yaml"), "utf8"), /format: human/);
-  assert.match(await readFile(join(projectRoot, ".pragman", "manifest.yaml"), "utf8"), /workspace: vimaksh/);
+  assert.match(await readFile(join(projectRoot, ".pragman", "manifest.yaml"), "utf8"), /workspace: example-co/);
 });
