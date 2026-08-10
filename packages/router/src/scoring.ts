@@ -33,7 +33,7 @@ export interface RankProvidersOptions {
 function rejectionReasons(provider: Provider, input: RouteInput, options: RankProvidersOptions, sensitivity: Sensitivity, required: string[]): string[] {
   const reasons: string[] = [];
   if (!provider.installed && !provider.handoffCapable) reasons.push("not-installed-or-handoff-capable");
-  if (provider.health !== "healthy") reasons.push(`health-${provider.health}`);
+  if (provider.health !== "healthy" && !(provider.health === "degraded" && provider.handoffCapable)) reasons.push(`health-${provider.health}`);
   if (!provider.compatible) reasons.push("version-incompatible");
   if (!provider.capabilities.some((capability) => required.includes(capability))) reasons.push("no-required-capability");
   if (!provider.hostSupport.includes(options.activeHost)) reasons.push("host-unsupported");

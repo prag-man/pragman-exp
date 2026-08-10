@@ -87,11 +87,15 @@ function handoffResult(handle: InvocationHandle): ProviderResult {
 }
 
 export class ConcreteHostAdapter implements HostAdapter {
+  readonly host: HostId;
+  readonly host_version: string;
   readonly #runtime: HostRuntime;
   readonly #compatibility: AdapterCompatibility;
   readonly #handles = new Map<string, InvocationHandle>();
 
-  constructor(readonly host: HostId, readonly host_version: string, runtime: HostRuntime, compatibility: AdapterCompatibility) {
+  constructor(host: HostId, host_version: string, runtime: HostRuntime, compatibility: AdapterCompatibility) {
+    this.host = host;
+    this.host_version = host_version;
     this.#runtime = runtime;
     this.#compatibility = compatibility;
   }

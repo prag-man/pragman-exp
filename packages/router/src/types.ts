@@ -140,8 +140,13 @@ export interface BlockedRoute extends RouteResultBase { status: Exclude<RouterSt
 export type RouteResult = ReadyRoute | ExistingRoute | BlockedRoute;
 
 export class RouterError extends Error {
-  constructor(public readonly code: string, message: string, public readonly details: Record<string, unknown> = {}) {
+  public readonly code: string;
+  public readonly details: Record<string, unknown>;
+
+  constructor(code: string, message: string, details: Record<string, unknown> = {}) {
     super(message);
     this.name = "RouterError";
+    this.code = code;
+    this.details = details;
   }
 }

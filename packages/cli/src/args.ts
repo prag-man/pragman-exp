@@ -4,6 +4,7 @@ export type CliCommand =
   | "events.record" | "events.score" | "events.list" | "events.summary" | "events.rebuild"
   | "events.export" | "events.purge" | "events.candidates.list" | "events.candidates.decide"
   | "eval.run" | "eval.compare"
+  | "route" | "providers.list" | "providers.inspect"
   | "workspace.add" | "workspace.edit" | "workspace.list" | "workspace.link" | "workspace.unlink" | "workspace.validate";
 
 export interface CliArguments {
@@ -24,6 +25,10 @@ export interface CliArguments {
   runner?: string;
   workspace?: string;
   projectRoot?: string;
+  providersDir?: string;
+  provider?: string;
+  host?: string;
+  hostVersion?: string;
   invalidArguments: string[];
 }
 
@@ -31,6 +36,7 @@ const VALUE_OPTIONS = new Map([
   ["--file", "file"], ["--config", "config"], ["--state-root", "stateRoot"],
   ["--apply", "applyDigest"], ["--from", "from"], ["--through", "through"], ["--runner", "runner"],
   ["--workspace", "workspace"], ["--project-root", "projectRoot"],
+  ["--providers-dir", "providersDir"], ["--provider", "provider"], ["--host", "host"], ["--host-version", "hostVersion"],
 ] as const);
 
 function commandFrom(positionals: readonly string[], version: boolean, help: boolean): CliCommand | null {
@@ -38,7 +44,7 @@ function commandFrom(positionals: readonly string[], version: boolean, help: boo
   if (help && positionals.length === 0) return "help";
   const key = positionals.join(".");
   const commands = new Set<CliCommand>([
-    "init", "scan", "doctor",
+    "init", "scan", "doctor", "route", "providers.list", "providers.inspect",
     "events.record", "events.score", "events.list", "events.summary", "events.rebuild", "events.export",
     "events.purge", "events.candidates.list", "events.candidates.decide", "eval.run", "eval.compare",
     "workspace.add", "workspace.edit", "workspace.list", "workspace.link", "workspace.unlink", "workspace.validate",
