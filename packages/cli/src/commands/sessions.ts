@@ -112,7 +112,10 @@ export async function executeSessionsCommand(arguments_: CliArguments, io: Comma
     if (command === "sessions.purge") return await purgeFiles(arguments_, "sessions");
     const value = await jsonInput(arguments_, io);
     const wrapper = command === "sessions.analyze" && object(value) && object(value.selection) ? value : { selection: value, context: {} };
-    const report = await scanSessions(wrapper.selection as unknown as SessionSelection);
+    const report = await scanSessions(
+      wrapper.selection as unknown as SessionSelection,
+      command === "sessions.scan" && arguments_.applyDigest ? { releaseExcerptDigest: arguments_.applyDigest } : {},
+    );
     if (command === "sessions.scan") return { exitCode: EXIT_CODES.success, envelope: successEnvelope(command, report), human: `${report.sessions_parsed}/${report.sessions_selected} sessions parsed${report.report_only ? " (report only)" : ""}.`, stderr: false };
     const result = analyze(report, object(wrapper.context) ? wrapper.context : {});
     return { exitCode: EXIT_CODES.success, envelope: successEnvelope(command, result), human: `${report.sessions_parsed} sessions analyzed; ${result.questions.length} context questions remain.`, stderr: false };

@@ -23,14 +23,13 @@ function positiveInteger(value: unknown): value is number {
 
 export function resolveSessionLimits(
   overrides: Partial<SessionLimits> = {},
-  options: { override_preview_approved?: boolean } = {},
 ): SessionLimits {
   const result = { ...DEFAULT_SESSION_LIMITS };
   for (const key of Object.keys(overrides) as Array<keyof SessionLimits>) {
     const value = overrides[key];
     if (!positiveInteger(value)) throw new SessionAdapterError("INVALID_LIMIT", "Session limits must be positive integers");
-    if (value > DEFAULT_SESSION_LIMITS[key] && options.override_preview_approved !== true) {
-      throw new SessionAdapterError("LIMIT_OVERRIDE_REQUIRES_PREVIEW", "Raising a session limit requires an approved source preview");
+    if (value > DEFAULT_SESSION_LIMITS[key]) {
+      throw new SessionAdapterError("LIMIT_OVERRIDE_UNSUPPORTED", "Raising a session limit is unavailable in v1; narrow the selected sources instead");
     }
     result[key] = value;
   }
@@ -60,7 +59,5 @@ export function validateSessionSelection(selection: SessionSelection): void {
       throw new SessionAdapterError("UNSAFE_ROOT", "Session roots must be explicit absolute directories and cannot be a filesystem root");
     }
   }
-  resolveSessionLimits(selection.limits, selection.override_preview_approved === undefined
-    ? {}
-    : { override_preview_approved: selection.override_preview_approved });
+  resolveSessionLimits(selection.limits);
 }

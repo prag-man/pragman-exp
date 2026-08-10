@@ -1,4 +1,5 @@
-import { lstat, readFile, readdir, realpath } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, sep } from "node:path";
 
 import { parseClaudeJsonl } from "./claude.ts";
@@ -98,11 +99,12 @@ function parseFile(input: string, file: CandidateFile, selection: SessionSelecti
   return parseCursorMarkdown(input, options);
 }
 
-export async function scanSessions(selection: SessionSelection): Promise<SessionScanReport> {
+export async function scanSessions(
+  selection: SessionSelection,
+  options: { releaseExcerptDigest?: string } = {},
+): Promise<SessionScanReport> {
   validateSessionSelection(selection);
-  const limits = resolveSessionLimits(selection.limits, selection.override_preview_approved === undefined
-    ? {}
-    : { override_preview_approved: selection.override_preview_approved });
+  const limits = resolveSessionLimits(selection.limits);
   const warnings: SessionIssue[] = [];
   const groups = await Promise.all(selection.sources.map((source) => discover(source, limits, warnings)));
   const discoveredFiles = groups.flat().sort((left, right) => left.source.adapter.localeCompare(right.source.adapter) || left.relative.localeCompare(right.relative));
@@ -119,32 +121,37 @@ export async function scanSessions(selection: SessionSelection): Promise<Session
 
   for (const file of files) {
     const sourceAlias = aliasFor(file.source, file.root_digest, file.relative);
-    let size: number;
-    try {
-      size = (await lstat(file.absolute)).size;
-    } catch {
-      quarantine.push({ code: "SOURCE_UNREADABLE", source_alias: sourceAlias });
-      sessionsFailed += 1;
-      continue;
-    }
-    if (size > limits.maximum_file_bytes) {
-      quarantine.push({ code: "FILE_TOO_LARGE", source_alias: sourceAlias });
-      sessionsFailed += 1;
-      continue;
-    }
-    if (bytesRead + size > limits.maximum_run_bytes) {
-      quarantine.push({ code: "RUN_TOO_LARGE", source_alias: sourceAlias });
-      sessionsFailed += 1;
-      continue;
-    }
-    bytesRead += size;
     let parsed: ParsedSession;
+    let handle;
     try {
-      parsed = parseFile(await readFile(file.absolute, "utf8"), file, selection, { ...limits, maximum_events: Math.max(1, limits.maximum_events - events.length) });
+      handle = await open(file.absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const metadata = await handle.stat();
+      if (!metadata.isFile()) throw new TypeError("not-file");
+      const size = metadata.size;
+      if (size > limits.maximum_file_bytes) {
+        quarantine.push({ code: "FILE_TOO_LARGE", source_alias: sourceAlias });
+        sessionsFailed += 1;
+        continue;
+      }
+      if (bytesRead + size > limits.maximum_run_bytes) {
+        quarantine.push({ code: "RUN_TOO_LARGE", source_alias: sourceAlias });
+        sessionsFailed += 1;
+        continue;
+      }
+      const body = await handle.readFile();
+      if (body.byteLength > limits.maximum_file_bytes || bytesRead + body.byteLength > limits.maximum_run_bytes) {
+        quarantine.push({ code: body.byteLength > limits.maximum_file_bytes ? "FILE_TOO_LARGE" : "RUN_TOO_LARGE", source_alias: sourceAlias });
+        sessionsFailed += 1;
+        continue;
+      }
+      bytesRead += body.byteLength;
+      parsed = parseFile(body.toString("utf8"), file, selection, { ...limits, maximum_events: Math.max(1, limits.maximum_events - events.length) });
     } catch {
       quarantine.push({ code: "SOURCE_UNREADABLE", source_alias: sourceAlias });
       sessionsFailed += 1;
       continue;
+    } finally {
+      await handle?.close().catch(() => undefined);
     }
     if (parsed.fatal) sessionsFailed += 1;
     else sessionsParsed += 1;
@@ -170,6 +177,22 @@ export async function scanSessions(selection: SessionSelection): Promise<Session
   if (identityCollision) quarantine.push({ code: "IDENTITY_COLLISION", source_alias: "selected-sessions" });
   const failureRatio = files.length === 0 ? 0 : sessionsFailed / files.length;
   const reportOnly = failureRatio > 0.1 || identityCollision || selection.sources.some((source) => source.best_effort === true);
+  const releaseDigest = excerpts.length === 0 || selection.privacy_depth === "metadata-only" ? null : sha256(JSON.stringify({
+    destination: "command-output",
+    selection: {
+      sources: [...new Set(selection.sources.map((source) => source.adapter))].sort(),
+      from: selection.from,
+      through: selection.through,
+      project_aliases: [...selection.project_aliases],
+      content_categories: [...selection.content_categories],
+      privacy_depth: selection.privacy_depth,
+    },
+    excerpts: excerpts.map((excerpt) => ({ source_alias: excerpt.source_alias, content_ref: excerpt.content_ref, sensitivity: excerpt.sensitivity })),
+  }));
+  if (options.releaseExcerptDigest && options.releaseExcerptDigest !== releaseDigest) {
+    throw new SessionAdapterError("STALE_PREVIEW", "Excerpt release approval does not match the current redacted selection");
+  }
+  const releaseExcerpts = releaseDigest !== null && options.releaseExcerptDigest === releaseDigest;
 
   return {
     schema_version: 1,
@@ -189,7 +212,13 @@ export async function scanSessions(selection: SessionSelection): Promise<Session
     report_only: reportOnly,
     apply_allowed: !reportOnly,
     events,
-    excerpts,
+    excerpts: releaseExcerpts ? excerpts : [],
+    excerpt_release: {
+      required: releaseDigest !== null,
+      released: releaseExcerpts,
+      preview_digest: releaseDigest,
+      destination: "command-output",
+    },
     quarantine,
     warnings,
     metrics,
