@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-10
 
-**Status:** User-approved direction; pending independent spec review
+**Status:** User-approved direction; independent review issues addressed, pending re-review
 
 **Parent spec:** `docs/superpowers/specs/2026-08-10-pragman-exp-design.md`
 
@@ -67,9 +67,9 @@ The private state root contains:
   quarantine/
 ```
 
-JSONL files are append-only. Each line is a complete validated record. Writers use the existing state-root advisory lock, append one canonical record through a file handle opened with append semantics, and sync it before releasing the lock. A malformed or truncated tail is quarantined on the next read; earlier valid lines remain usable.
+JSONL files are append-only. Each line is a complete validated record. Durable event commands use the existing state-root advisory lock, append one canonical record through a file handle opened with append semantics, and sync it before releasing the lock. Best-effort instrumentation follows the bounded path in Section 10. A malformed or truncated tail is quarantined on the next read; earlier valid lines remain usable.
 
-Rollups are derived state. `pragman events rebuild` can reproduce them from retained events and scores. No command edits or deletes an individual historical event.
+Rollups inside the raw-retention horizon are derived state. `pragman events rebuild` can reproduce them from retained events and scores. Before a raw day expires, retention rebuilds its daily rollup, verifies the source count and canonical source digest, marks it `sealed`, and only then purges that day's raw records. Sealed rollups are durable compacted history rather than rebuildable cache; rebuild verifies and preserves them. Weekly rollups are deterministically recomputed from daily rollups, including sealed days. No command edits or deletes an individual historical event.
 
 ## 5. Skill event contract
 
@@ -82,6 +82,7 @@ The existing `skill-event.schema.json` becomes the normative lifecycle record. I
 - `invocation_mode`: `model`, `user`, `router`, `host`, or `eval`
 - nullable aliases: `session_id`, `route_id`, `eval_id`, `case_id`, `trial_id`
 - nullable `provider`, `ablation_arm`, `trigger_expected`, and `trigger_actual`
+- nullable `provider_digest`, `eval_corpus_digest`, and `trial_policy_digest`
 - nullable `status` and `outcome_code`
 - non-negative counters: `duration_ms`, `tool_calls`, `retries`, `rework_cycles`, `verification_checks`, `verification_passes`
 - `observation_source`: `router`, `host-adapter`, `cli`, `eval-runner`, or `user-report`
@@ -105,7 +106,7 @@ A `skill-score` record is immutable and requires:
 
 - `schema_version`, `score_id`, `timestamp`
 - `invocation_id` and optional `eval_id`, `case_id`, `trial_id`
-- `metric_id` and `value`
+- `metric_id`, `metric_definition_digest`, and `value`
 - `value_type`: `boolean`, `number`, or `category`
 - `source`: `deterministic`, `user`, or `llm-judge`
 - `grader_id`, `grader_version`, and `rubric_digest`
@@ -114,7 +115,25 @@ A `skill-score` record is immutable and requires:
 
 Numbers use a published metric range. Categories use a metric-specific enum. User scores record the explicit rating but never the feedback text. LLM-judge scoring requires a versioned public rubric, disclosed remote egress, and only the minimum approved artifact. Stored evidence is digest-only.
 
+For deterministic scoring, `rubric_digest` equals the metric-definition digest and `grader_id` names the executable grader. For user scoring, the public user-rating rubric digest and a fixed `user-rating` grader/version are recorded. For LLM judges, `rubric_digest` identifies the exact disclosed judge prompt and anchors.
+
 A correction appends a new score referencing the old record. It never mutates the prior score. Rollups use the latest valid score in each supersession chain and report the correction count.
+
+Corrections form a linear chain. A referenced predecessor must already exist and be retained, have an earlier timestamp, and match `invocation_id`, `metric_id`, `metric_definition_digest`, `value_type`, `source`, `grader_id`, `grader_version`, and `rubric_digest`. A predecessor may have at most one successor; a missing predecessor, cycle, fork, or identity mismatch quarantines the proposed correction. Retention is anchored to the invocation's `invoked` timestamp and purges the event plus its complete score chains together, so a delayed score cannot extend or outlive the invocation cohort. A score for an expired or unknown invocation is rejected.
+
+### 6.1 Metric definition contract
+
+Every scored metric has a versioned public definition under `evals/metrics/` and a canonical digest recorded on each score. A definition requires:
+
+- `schema_version`, `metric_id`, `version`, and `description`
+- `value_type`: `boolean`, `number`, or `category`
+- exactly one value domain: `number_range { min, max }`, `boolean_values`, or ordered `categories`
+- `direction`: `maximize`, `minimize`, or `target`
+- `pass_rule` using `eq`, `gte`, `lte`, or inclusive `between`
+- `eligible_score_sources`: a non-empty subset of `deterministic`, `user`, and `llm-judge`
+- `eligible_verification_codes`: the bounded outcome codes allowed in verified-success denominators, or an empty list when the metric does not support verified success
+
+Category definitions assign each category a stable ID, ordinal rank, and pass/fail value. A target metric declares its target or inclusive target range. Schema validation rejects a score outside the domain, from an ineligible source, or against an unknown definition digest. Reliability and regression use the definition's pass rule and direction; implementations never infer them from the metric name.
 
 ## 7. Metrics
 
@@ -140,7 +159,7 @@ Production invocations normally have `trigger_expected=null`; they do not enter 
 
 ### 7.3 Ablation metrics
 
-An ablation comparison requires the same `eval_id`, case corpus digest, host, model, harness, grader/rubric version, and trial policy for both arms. Pragman reports:
+An ablation comparison requires the same `eval_id`, `eval_corpus_digest`, `trial_policy_digest`, case and paired-trial IDs, skill digest under test, provider and provider digest, host and host version, model and model version, harness version, metric definition digest, grader/grader version, and rubric digest for both arms. Both arms record the tested skill's provider record and digest; `skill-off` marks that skill as the omitted intervention rather than replacing its provider identity with an unrelated baseline. Pragman reports:
 
 - Outcome lift: mean skill-on score minus mean skill-off score.
 - Verified-success lift.
@@ -151,7 +170,7 @@ Missing arms, changed rubrics, or incomparable environments produce `INCOMPARABL
 
 ## 8. Rollups and lifecycle recommendations
 
-Daily and weekly rollups group only by bounded dimensions: skill identity/version/digest/type, host/model/harness, invocation mode, provider, event cohort, eval corpus, and ablation arm. They contain counts, sums, bounded histograms, score aggregates, and source-coverage counts—never source aliases or invocation/session identifiers.
+Daily and weekly rollups group only by bounded dimensions: skill identity/version/digest/type, host/model/harness and their versions, invocation mode, provider/provider digest, event cohort, eval corpus/trial-policy digest, metric-definition/rubric digest, and ablation arm. They contain counts, sums, bounded histograms, score aggregates, source-coverage counts, source-record count/digest, and `sealed` state—never source aliases or invocation/session identifiers.
 
 Pragman can generate review candidates:
 
@@ -172,13 +191,15 @@ Defaults:
 
 | Record | Retention |
 | --- | --- |
-| Raw skill events and scores | 180 days |
+| Raw skill events and complete score chains | 180 days from invocation |
 | Daily rollups | 2 years |
 | Weekly rollups | until user purge |
 | Quarantined invalid records | 30 days |
 | Raw prompts, outputs, transcripts, paths, tool arguments | never stored |
 
 Users may disable local events, shorten retention, rebuild rollups, preview a purge, or purge all records. Disabling measurement does not prevent any skill from running. Purges are explicit destructive operations and report the exact time range and record classes.
+
+Automatic expiry follows compact-before-delete: seal and verify the daily rollup, recompute the affected weekly rollup, then remove the raw invocation cohorts. If sealing or verification fails, raw records remain and doctor reports retention debt. A user-requested purge may deliberately remove both raw and compacted history after its preview; it does not pretend the deleted period remains rebuildable.
 
 `pragman events export` defaults to rollups. Exporting raw content-free events requires a second explicit choice and preview. Session IDs, route IDs, source aliases, and invocation IDs are omitted or replaced with export-local cohort IDs. The export includes its schema version and aggregation policy.
 
@@ -194,7 +215,12 @@ Instrumentation occurs at the nearest trustworthy observer:
 
 The system never claims complete coverage. Every summary includes observed invocation count by source and incomplete lifecycle count.
 
-Event recording must not block the user's primary workflow. Validation or storage failure returns a structured warning to the invoking adapter, increments a local doctor health condition when possible, and allows the skill execution to continue. Security denials reject only the event, not the work.
+Event recording must not block the user's primary workflow. The library exposes two explicit modes:
+
+- `durable`: used only when recording is the command's requested primary outcome. It waits for the mutation lock, append, and sync under the normal CLI temporary-failure rules.
+- `best-effort`: used by router, host adapter, and skill instrumentation. It validates in memory, attempts the lock for at most 5 ms, and races append completion against a 20 ms total wall-clock deadline. It does not sync. Lock contention, deadline, validation, or I/O failure returns `recorded=false` plus a bounded reason code; the observer proceeds without retrying on the primary path.
+
+The append worker owns and releases any acquired lock in `finally`; an append still completing after the caller's deadline retains that lock until it settles but cannot alter the returned work result or trigger a primary-path retry. Tests inject a stalled lock and stalled append and require the observer to return within 30 ms under a monotonic fake clock. A warning is returned to the invoking adapter and contributes to in-process coverage diagnostics when possible. Security denials reject only the event, not the work.
 
 ## 11. CLI surface
 
@@ -230,19 +256,21 @@ A skill change may merge when:
 - every privacy, security, approval, and deterministic invariant passes;
 - no supported cohort regresses beyond its published tolerance;
 - the target metric improves, or the change adds meaningful failure coverage without regression; and
-- baseline and forward results, trial policy, environment, skill digest, and rubric digest are recorded.
+- baseline and forward results, corpus/trial-policy digests, full comparable environment versions, skill/provider digests, metric-definition digest, and rubric digest are recorded.
 
 ## 13. Acceptance criteria
 
 - Event, score, and rollup schemas reject arbitrary text and known secret formats.
 - Lifecycle storage is append-only, idempotent for exact duplicates, collision-safe, lock-safe, and recoverable from a truncated final line.
+- Best-effort instrumentation returns inside its bounded deadline under lock and append stalls, while durable event commands preserve sync semantics.
 - Delayed and corrected scores preserve history and rollups select the latest valid correction.
+- Metric definitions normatively define domains, direction, pass rules, and eligible verifiers.
 - Skill-on/off comparison rejects mismatched corpora, environments, graders, or trial policies.
 - Precision/recall exclude production cases whose expectation is unknown.
 - Summaries expose denominators, observation coverage, incomplete lifecycles, and cohort dimensions.
 - Event failures never fail an otherwise valid skill invocation.
 - Export is local, previewed, aggregate-first, and contains no private identifiers or content.
-- Retention and purge behavior is deterministic and test-covered.
+- Retention seals and verifies rollups before raw expiry; rebuild preserves sealed history, and purge behavior is deterministic and test-covered.
 - Analyze/unfck recommendations remain advisory until preview, evaluation, and user approval.
 - At least one end-to-end fixture demonstrates: route → invoke → complete → verify → score → roll up → ablation comparison → improvement recommendation.
 
