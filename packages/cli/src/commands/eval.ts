@@ -1,15 +1,17 @@
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { link, lstat, mkdir, open, readFile, realpath, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   compareAblation,
+  canonicalJson,
   createEventValidators,
   loadEventSettings,
   observeSkillEvent,
+  resolveStateRoot,
   sha256Digest,
   type AblationTrial,
   type ObservationResult,
@@ -64,17 +66,35 @@ function parseCompareInput(value: unknown): { trials: AblationTrial[]; metric: S
   return { trials, metric, registry: new Map([[digest, metric]]) };
 }
 
-function parseRunDescriptor(value: unknown): { scenario_file: string; observed_file: string; output_file: string } {
-  if (!isPlainObject(value) || !exactKeys(value, ["scenario_file", "observed_file", "output_file"])) {
+interface EvalRunDescriptor {
+  scenario_file: string;
+  observed_file: string;
+  candidate_digest?: string;
+  evidence_id?: string;
+}
+
+const RUN_DESCRIPTOR_FIELDS = ["scenario_file", "observed_file", "candidate_digest", "evidence_id"] as const;
+const SAFE_EVIDENCE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function parseRunDescriptor(value: unknown): EvalRunDescriptor {
+  if (!isPlainObject(value) || Object.keys(value).some((field) => !(RUN_DESCRIPTOR_FIELDS as readonly string[]).includes(field))
+    || !("scenario_file" in value) || !("observed_file" in value)) {
     throw new TypeError("Eval run input must use the exact file descriptor schema");
   }
-  for (const field of ["scenario_file", "observed_file", "output_file"] as const) {
+  for (const field of ["scenario_file", "observed_file"] as const) {
     const selected = value[field];
     if (typeof selected !== "string" || selected.length < 1 || selected.length > 4096 || selected.includes("\0")) {
       throw new TypeError("Eval run file descriptors are invalid");
     }
   }
-  return value as { scenario_file: string; observed_file: string; output_file: string };
+  if (value.candidate_digest !== undefined && (typeof value.candidate_digest !== "string" || !SHA256.test(value.candidate_digest))) {
+    throw new TypeError("Eval candidate digest is invalid");
+  }
+  if (value.evidence_id !== undefined && (typeof value.evidence_id !== "string" || value.evidence_id.length > 96
+    || !SAFE_EVIDENCE_ID.test(value.evidence_id))) {
+    throw new TypeError("Eval evidence id is invalid");
+  }
+  return value as unknown as EvalRunDescriptor;
 }
 
 async function readSelectedJson(path: string): Promise<unknown> {
@@ -239,7 +259,7 @@ function validComparisonIdentity(value: unknown): boolean {
     : safeEvidenceToken(value[field]));
 }
 
-function parseRunnerEvidence(stdout: string): unknown {
+export function parseBundledRunnerEvidence(stdout: string): Record<string, unknown> {
   if (Buffer.byteLength(stdout, "utf8") > MAX_RUNNER_OUTPUT_BYTES) throw new TypeError("Runner evidence exceeded its bound");
   let evidence: unknown;
   try { evidence = JSON.parse(stdout) as unknown; } catch { throw new TypeError("Runner evidence is invalid"); }
@@ -284,6 +304,119 @@ function parseRunnerEvidence(stdout: string): unknown {
   return evidence;
 }
 
+export function validateBundledRunnerEvidence(value: unknown): Record<string, unknown> {
+  return parseBundledRunnerEvidence(canonicalJson(value));
+}
+
+export interface EvalEvidenceArtifact {
+  schema_version: 1;
+  artifact_type: "pragman-eval-evidence";
+  evidence_id: string;
+  created_at: string;
+  candidate_digest: string | null;
+  runner_version: 2;
+  evidence: Record<string, unknown>;
+}
+
+function parseEvalEvidenceArtifact(value: unknown, expectedEvidenceId: string): EvalEvidenceArtifact {
+  const timestamp = isPlainObject(value) && typeof value.created_at === "string" ? new Date(value.created_at) : null;
+  if (!isPlainObject(value) || !exactKeys(value, [
+    "schema_version", "artifact_type", "evidence_id", "created_at", "candidate_digest", "runner_version", "evidence",
+  ]) || value.schema_version !== 1 || value.artifact_type !== "pragman-eval-evidence"
+    || value.evidence_id !== expectedEvidenceId || value.runner_version !== 2
+    || timestamp === null || !Number.isFinite(timestamp.getTime()) || timestamp.toISOString() !== value.created_at
+    || (value.candidate_digest !== null && (typeof value.candidate_digest !== "string" || !SHA256.test(value.candidate_digest)))) {
+    throw Object.assign(new Error("Evaluation artifact is invalid"), { code: "EVALUATION_FAILED" });
+  }
+  const evidence = validateBundledRunnerEvidence(value.evidence);
+  return { ...value, evidence } as EvalEvidenceArtifact;
+}
+
+function contained(root: string, candidate: string): boolean {
+  const relation = relative(root, candidate);
+  return relation === "" || (!relation.startsWith("..") && !isAbsolute(relation));
+}
+
+async function evidenceDirectory(configuredRoot: string): Promise<string> {
+  const root = await resolveStateRoot(configuredRoot);
+  const directory = join(root, "eval-evidence");
+  try {
+    const metadata = await lstat(directory);
+    if (metadata.isSymbolicLink() || !metadata.isDirectory()) throw Object.assign(new Error("Unsafe evidence directory"), { code: "OUTPUT_UNAVAILABLE" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    await mkdir(directory, { mode: 0o700 });
+  }
+  const resolved = await realpath(directory);
+  if (!contained(root, resolved)) throw Object.assign(new Error("Unsafe evidence directory"), { code: "OUTPUT_UNAVAILABLE" });
+  return resolved;
+}
+
+export async function loadEvalEvidenceArtifact(
+  configuredRoot: string,
+  evidenceId: string,
+): Promise<{ artifact: EvalEvidenceArtifact; artifactDigest: string }> {
+  if (evidenceId.length > 96 || !SAFE_EVIDENCE_ID.test(evidenceId)) {
+    throw Object.assign(new Error("Evaluation evidence id is invalid"), { code: "EVALUATION_FAILED" });
+  }
+  const root = await resolveStateRoot(configuredRoot);
+  const directory = join(root, "eval-evidence");
+  let directoryMetadata;
+  try { directoryMetadata = await lstat(directory); }
+  catch { throw Object.assign(new Error("Evaluation evidence is unavailable"), { code: "EVALUATION_FAILED" }); }
+  if (directoryMetadata.isSymbolicLink() || !directoryMetadata.isDirectory()) {
+    throw Object.assign(new Error("Evaluation evidence is unavailable"), { code: "EVALUATION_FAILED" });
+  }
+  const resolvedDirectory = await realpath(directory);
+  if (!contained(root, resolvedDirectory)) throw Object.assign(new Error("Evaluation evidence is unavailable"), { code: "EVALUATION_FAILED" });
+  const target = join(resolvedDirectory, `${evidenceId}.json`);
+  let metadata;
+  try { metadata = await lstat(target); }
+  catch { throw Object.assign(new Error("Evaluation evidence is unavailable"), { code: "EVALUATION_FAILED" }); }
+  if (metadata.isSymbolicLink() || !metadata.isFile() || metadata.size > MAX_RUNNER_OUTPUT_BYTES * 2) {
+    throw Object.assign(new Error("Evaluation evidence is unavailable"), { code: "EVALUATION_FAILED" });
+  }
+  const resolvedTarget = await realpath(target);
+  if (!contained(resolvedDirectory, resolvedTarget)) throw Object.assign(new Error("Evaluation evidence is unavailable"), { code: "EVALUATION_FAILED" });
+  let value: unknown;
+  try { value = JSON.parse(await readFile(resolvedTarget, "utf8")) as unknown; }
+  catch { throw Object.assign(new Error("Evaluation evidence is invalid"), { code: "EVALUATION_FAILED" }); }
+  const artifact = parseEvalEvidenceArtifact(value, evidenceId);
+  return { artifact, artifactDigest: sha256Digest(artifact) };
+}
+
+async function writeImmutableEvidence(configuredRoot: string, evidenceId: string, bytes: string): Promise<void> {
+  const directory = await evidenceDirectory(configuredRoot);
+  const target = join(directory, `${evidenceId}.json`);
+  try {
+    await lstat(target);
+    throw Object.assign(new Error("Evaluation evidence already exists"), { code: "OUTPUT_ALREADY_EXISTS" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const temporary = join(directory, `.${evidenceId}.${process.pid}.${randomBytes(12).toString("hex")}.tmp`);
+  let handle;
+  try {
+    handle = await open(temporary, "wx", 0o600);
+    await handle.writeFile(bytes);
+    await handle.sync();
+    await handle.close();
+    handle = undefined;
+    if (await realpath(directory) !== directory) throw Object.assign(new Error("Unsafe evidence directory"), { code: "OUTPUT_UNAVAILABLE" });
+    await link(temporary, target);
+    const directoryHandle = await open(directory, "r");
+    try { await directoryHandle.sync(); } finally { await directoryHandle.close(); }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw Object.assign(new Error("Evaluation evidence already exists"), { code: "OUTPUT_ALREADY_EXISTS" });
+    }
+    throw error;
+  } finally {
+    await handle?.close().catch(() => undefined);
+    await rm(temporary, { force: true }).catch(() => undefined);
+  }
+}
+
 export async function executeEvalCommand(
   arguments_: CliArguments,
   io: CommandIo,
@@ -306,7 +439,7 @@ export async function executeEvalCommand(
     const descriptor = parseRunDescriptor(value);
     const scenario = await readSelectedJson(descriptor.scenario_file);
     const observed = await readSelectedJson(descriptor.observed_file);
-    const runner = arguments_.runner ?? await resolveBundledEvalRunner();
+    const runner = await resolveBundledEvalRunner();
     const invocationId = uuidV7();
     const startedAt = Date.now();
     const warnings: string[] = [];
@@ -334,13 +467,27 @@ export async function executeEvalCommand(
         stderr: true,
       };
     }
-    const evidence = parseRunnerEvidence(child.stdout);
-    try { await writeFile(descriptor.output_file, `${JSON.stringify(evidence, null, 2)}\n`, { flag: "w" }); }
-    catch {
+    const evidence = parseBundledRunnerEvidence(child.stdout);
+    const evidenceId = descriptor.evidence_id ?? `eval-${uuidV7()}`;
+    const artifact: EvalEvidenceArtifact = {
+      schema_version: 1,
+      artifact_type: "pragman-eval-evidence",
+      evidence_id: evidenceId,
+      created_at: new Date().toISOString(),
+      candidate_digest: descriptor.candidate_digest ?? null,
+      runner_version: 2,
+      evidence,
+    };
+    const artifactDigest = sha256Digest(artifact);
+    try { await writeImmutableEvidence(arguments_.stateRoot ?? DEFAULT_EVENT_STATE_ROOT, evidenceId, `${canonicalJson(artifact)}\n`); }
+    catch (error) {
+      const exists = (error as { code?: string }).code === "OUTPUT_ALREADY_EXISTS";
       return {
-        exitCode: EXIT_CODES.unavailable,
-        envelope: errorEnvelope(arguments_.command, "OUTPUT_UNAVAILABLE", "Evaluation output could not be written", { diagnostic: "OUTPUT_WRITE_FAILED" }, true, warnings),
-        human: "Evaluation output could not be written.",
+        exitCode: exists ? EXIT_CODES.denied : EXIT_CODES.unavailable,
+        envelope: errorEnvelope(arguments_.command, exists ? "OUTPUT_ALREADY_EXISTS" : "OUTPUT_UNAVAILABLE", exists
+          ? "Evaluation evidence already exists"
+          : "Evaluation output could not be written", { diagnostic: exists ? "IMMUTABLE_TARGET_EXISTS" : "OUTPUT_WRITE_FAILED" }, !exists, warnings),
+        human: exists ? "Evaluation evidence already exists." : "Evaluation output could not be written.",
         stderr: true,
       };
     }
@@ -351,7 +498,7 @@ export async function executeEvalCommand(
     }
     return {
       exitCode: EXIT_CODES.success,
-      envelope: successEnvelope(arguments_.command, { runner_version: 2, evidence }, warnings),
+      envelope: successEnvelope(arguments_.command, { runner_version: 2, evidence_id: evidenceId, artifact_digest: artifactDigest, evidence }, warnings),
       human: "Local skill evaluation run completed.",
     };
   } catch (error) {

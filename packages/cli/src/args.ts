@@ -26,10 +26,8 @@ export interface CliArguments {
   from?: string;
   through?: string;
   classes: string[];
-  runner?: string;
   workspace?: string;
   projectRoot?: string;
-  providersDir?: string;
   provider?: string;
   host?: string;
   hostVersion?: string;
@@ -42,9 +40,9 @@ export interface CliArguments {
 
 const VALUE_OPTIONS = new Map([
   ["--file", "file"], ["--config", "config"], ["--state-root", "stateRoot"],
-  ["--apply", "applyDigest"], ["--from", "from"], ["--through", "through"], ["--runner", "runner"],
+  ["--apply", "applyDigest"], ["--from", "from"], ["--through", "through"],
   ["--workspace", "workspace"], ["--project-root", "projectRoot"],
-  ["--providers-dir", "providersDir"], ["--provider", "provider"], ["--host", "host"], ["--host-version", "hostVersion"],
+  ["--provider", "provider"], ["--host", "host"], ["--host-version", "hostVersion"],
   ["--target", "target"], ["--target-id", "targetId"], ["--change", "change"],
 ] as const);
 

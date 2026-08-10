@@ -56,19 +56,22 @@ test("packed package installs an emitted pragman binary that runs through a syml
   assert.equal(output.command, "version");
   assert.equal(output.data.version, installedPackage.version);
 
-  const evalOutput = join(consumerDirectory, "packed-evidence.json");
+  const evalState = join(consumerDirectory, "event-state");
   const evalResult = spawnSync(join(consumerDirectory, "node_modules/.bin/pragman"), [
-    "eval", "run", "--state-root", join(consumerDirectory, "event-state"), "--json",
+    "eval", "run", "--state-root", evalState, "--json",
   ], {
     cwd: consumerDirectory,
     encoding: "utf8",
     input: JSON.stringify({
       scenario_file: join(installedRoot, "evals/fixtures/skill-events/baseline.json"),
       observed_file: join(installedRoot, "evals/fixtures/skill-events/forward.json"),
-      output_file: evalOutput,
+      evidence_id: "packed-evidence",
     }),
   });
   assert.equal(evalResult.status, 0, evalResult.stderr);
-  assert.equal(JSON.parse(evalResult.stdout).data.evidence.mode, "skill-eval");
-  assert.equal(JSON.parse(await readFile(evalOutput, "utf8")).status, "COMPARABLE");
+  const evalData = JSON.parse(evalResult.stdout).data;
+  assert.equal(evalData.evidence.mode, "skill-eval");
+  assert.match(evalData.artifact_digest, /^[a-f0-9]{64}$/);
+  const artifact = JSON.parse(await readFile(join(evalState, "eval-evidence", "packed-evidence.json"), "utf8"));
+  assert.equal(artifact.evidence.status, "COMPARABLE");
 });
