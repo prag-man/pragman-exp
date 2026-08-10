@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pragman Prototype"
+  short_description: "Create safe clickable decision artifacts"
+  default_prompt: "Use $pragman-prototype to turn this product uncertainty into the smallest useful clickable prototype."

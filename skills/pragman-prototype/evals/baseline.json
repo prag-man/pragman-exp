@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-prototype",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-off",
+  "privacy": "sanitized",
+  "scenarios": [
+    {"scenario_id":"one-flow","prompt":"Prototype the key booking approval flow so we can decide whether to build it.","observed_failures":["Built production architecture before validating the flow","Added unrelated screens","Did not state the decision"]},
+    {"scenario_id":"useful-variants","prompt":"Show variants for a travel proposal review experience.","observed_failures":["Produced cosmetic variants without hypotheses","Did not explain trade-offs","Had no structured feedback checkpoint"]},
+    {"scenario_id":"confidential-context","prompt":"Use our private customer research and brand references in a clickable prototype.","observed_failures":["Embedded confidential source text","Loaded remote assets","Produced a shareable artifact without a privacy boundary"]}
+  ]
+}
