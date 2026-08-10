@@ -63,6 +63,14 @@ function validNumericRule(rule: MetricPassRule, range: { min: number; max: numbe
   return typeof rule.value === "number" && isWithin(rule.value, range);
 }
 
+function eventResult(value: unknown): ValidationResult<SkillEvent> {
+  const result = schemaResult(validateEvent, value);
+  if (!result.ok) return result;
+  return result.value.verification_passes <= result.value.verification_checks
+    ? result
+    : { ok: false, code: "EVENT_VERIFICATION_COUNT_INVALID" };
+}
+
 function hasValidMetricSemantics(metric: SkillMetric): boolean {
   if (metric.value_type === "number") {
     const range = metric.number_range;
@@ -89,9 +97,17 @@ function hasValidMetricSemantics(metric: SkillMetric): boolean {
   }
 
   if (metric.value_type === "boolean") {
-    return metric.direction !== "target"
-      && metric.pass_rule.operator === "eq"
-      && typeof metric.pass_rule.value === "boolean";
+    if (metric.pass_rule.operator !== "eq" || typeof metric.pass_rule.value !== "boolean") return false;
+    const falseValue = metric.boolean_values?.find((entry) => entry.value === false);
+    const trueValue = metric.boolean_values?.find((entry) => entry.value === true);
+    if (!falseValue || !trueValue) return false;
+    const passingValue = metric.pass_rule.value ? trueValue : falseValue;
+    const failingValue = metric.pass_rule.value ? falseValue : trueValue;
+    if (passingValue.utility < failingValue.utility) return false;
+    if (metric.direction === "target") return true;
+    return metric.direction === "maximize"
+      ? falseValue.utility <= trueValue.utility
+      : falseValue.utility >= trueValue.utility;
   }
 
   const categories = metric.categories ?? [];
@@ -168,6 +184,42 @@ function scoreIsInDomain(score: SkillScore, metric: SkillMetric): boolean {
     && (metric.categories ?? []).some((category) => category.id === score.value);
 }
 
+function rollupResult(value: unknown): ValidationResult<SkillRollup> {
+  const result = schemaResult(validateRollup, value);
+  if (!result.ok) return result;
+  const rollup = result.value;
+  if (Date.parse(rollup.period_start) > Date.parse(rollup.period_end)) {
+    return { ok: false, code: "ROLLUP_PERIOD_INVALID" };
+  }
+
+  const terminalOrIncomplete = rollup.counts.completed + rollup.counts.cancelled + rollup.counts.incomplete;
+  const eventRecordCount = rollup.counts.eligible
+    + rollup.counts.invoked
+    + rollup.counts.completed
+    + rollup.counts.cancelled
+    + rollup.counts.verified;
+  const scoreRecordCount = rollup.score_aggregate.count + rollup.score_aggregate.correction_count;
+  const observationCount = Object.values(rollup.observation_source_counts)
+    .reduce((total, count) => total + count, 0);
+  const histogramExceedsSources = Object.values(rollup.histograms)
+    .some((histogram) => histogram.reduce((total, count) => total + count, 0) > rollup.source_record_count);
+  if (terminalOrIncomplete > rollup.counts.invoked
+    || rollup.counts.verified > rollup.counts.completed
+    || rollup.score_aggregate.pass_count > rollup.score_aggregate.count
+    || eventRecordCount + scoreRecordCount > rollup.source_record_count
+    || observationCount > rollup.source_record_count
+    || histogramExceedsSources) {
+    return { ok: false, code: "ROLLUP_COUNT_RELATION_INVALID" };
+  }
+  if (rollup.sums.verification_passes > rollup.sums.verification_checks) {
+    return { ok: false, code: "ROLLUP_VERIFICATION_COUNT_INVALID" };
+  }
+  if (rollup.score_aggregate.utility_sum > rollup.score_aggregate.count) {
+    return { ok: false, code: "ROLLUP_UTILITY_SUM_INVALID" };
+  }
+  return result;
+}
+
 export function createEventValidators(metricDefinitions: readonly unknown[] = []): EventValidators {
   const registry = new Map<string, SkillMetric>();
   for (const definition of metricDefinitions) {
@@ -178,7 +230,7 @@ export function createEventValidators(metricDefinitions: readonly unknown[] = []
 
   return Object.freeze({
     event(value: unknown) {
-      return schemaResult(validateEvent, value);
+      return eventResult(value);
     },
     metric(value: unknown) {
       return metricResult(value);
@@ -210,7 +262,7 @@ export function createEventValidators(metricDefinitions: readonly unknown[] = []
       return scoreResult;
     },
     rollup(value: unknown) {
-      return schemaResult(validateRollup, value);
+      return rollupResult(value);
     },
     candidate(value: unknown) {
       return schemaResult(validateCandidate, value);

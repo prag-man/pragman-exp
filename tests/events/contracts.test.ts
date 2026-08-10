@@ -187,6 +187,15 @@ test("event schema rejects legacy vocabulary and requires canonical nullable fie
   assert.equal(validators.event(withoutProviderDigest).ok, false);
 });
 
+test("event verification passes cannot exceed verification checks", () => {
+  const validators = createEventValidators([validMetric]);
+  assert.deepEqual(validators.event({
+    ...validEvent,
+    verification_checks: 0,
+    verification_passes: 1,
+  }), { ok: false, code: "EVENT_VERIFICATION_COUNT_INVALID" });
+});
+
 test("metric schema enforces exactly one domain and bounded category identifiers and ranks", () => {
   const validators = createEventValidators([validMetric]);
   assert.equal(validators.metric(validMetric).ok, true);
@@ -413,6 +422,104 @@ test("category passing flags and direction utility ordering are semantically con
   }))).ok, false);
 });
 
+test("boolean utility ordering follows direction and the passing value", () => {
+  const validators = createEventValidators([validMetric]);
+  const booleanMetric = (overrides: Record<string, unknown> = {}) => ({
+    ...validMetric,
+    metric_id: "boolean-quality",
+    ...overrides,
+  });
+
+  assert.equal(validators.metric(booleanMetric()).ok, true);
+  assert.equal(validators.metric(booleanMetric({
+    boolean_values: [
+      { value: false, utility: 1 },
+      { value: true, utility: 0 },
+    ],
+  })).ok, false);
+  assert.equal(validators.metric(booleanMetric({
+    pass_rule: { operator: "eq", value: false },
+  })).ok, false);
+  assert.equal(validators.metric(booleanMetric({
+    direction: "minimize",
+    pass_rule: { operator: "eq", value: false },
+    boolean_values: [
+      { value: false, utility: 1 },
+      { value: true, utility: 0 },
+    ],
+  })).ok, true);
+  assert.equal(validators.metric(booleanMetric({
+    direction: "minimize",
+    pass_rule: { operator: "eq", value: false },
+    boolean_values: [
+      { value: false, utility: 0 },
+      { value: true, utility: 1 },
+    ],
+  })).ok, false);
+  assert.equal(validators.metric(booleanMetric({
+    direction: "target",
+    pass_rule: { operator: "eq", value: true },
+    boolean_values: [
+      { value: false, utility: 0.4 },
+      { value: true, utility: 1 },
+    ],
+  })).ok, true);
+  assert.equal(validators.metric(booleanMetric({
+    direction: "target",
+    pass_rule: { operator: "eq", value: true },
+    boolean_values: [
+      { value: false, utility: 1 },
+      { value: true, utility: 0.4 },
+    ],
+  })).ok, false);
+});
+
+test("rollup cross-field totals reject impossible periods, subsets, and utility sums", () => {
+  const validators = createEventValidators([validMetric]);
+  const rollup = validRollup();
+
+  assert.deepEqual(validators.rollup({
+    ...rollup,
+    period_start: "2026-08-12T00:00:00Z",
+    period_end: "2026-08-11T00:00:00Z",
+  }), { ok: false, code: "ROLLUP_PERIOD_INVALID" });
+  assert.equal(validators.rollup({ ...rollup, period_end: rollup.period_start }).ok, true);
+
+  const invalidCounts = [
+    { ...rollup.counts, completed: 2 },
+    { ...rollup.counts, completed: 1, cancelled: 1 },
+    { ...rollup.counts, verified: 2 },
+    { ...rollup.counts, incomplete: 2 },
+    { ...rollup.counts, eligible: 4 },
+  ];
+  for (const counts of invalidCounts) {
+    assert.deepEqual(validators.rollup({ ...rollup, counts }), {
+      ok: false,
+      code: "ROLLUP_COUNT_RELATION_INVALID",
+    });
+  }
+  assert.deepEqual(validators.rollup({
+    ...rollup,
+    score_aggregate: { ...rollup.score_aggregate, count: 1, pass_count: 2 },
+  }), { ok: false, code: "ROLLUP_COUNT_RELATION_INVALID" });
+  assert.deepEqual(validators.rollup({
+    ...rollup,
+    observation_source_counts: { ...rollup.observation_source_counts, router: 4 },
+  }), { ok: false, code: "ROLLUP_COUNT_RELATION_INVALID" });
+  assert.deepEqual(validators.rollup({
+    ...rollup,
+    histograms: { ...rollup.histograms, duration_ms: [5] },
+  }), { ok: false, code: "ROLLUP_COUNT_RELATION_INVALID" });
+  assert.deepEqual(validators.rollup({
+    ...rollup,
+    sums: { ...rollup.sums, verification_checks: 0, verification_passes: 1 },
+  }), { ok: false, code: "ROLLUP_VERIFICATION_COUNT_INVALID" });
+  assert.deepEqual(validators.rollup({
+    ...rollup,
+    score_aggregate: { ...rollup.score_aggregate, count: 1, utility_sum: 1.01 },
+  }), { ok: false, code: "ROLLUP_UTILITY_SUM_INVALID" });
+});
+
 test("canonical serialization and metric digests are stable across key order", () => {
   assert.equal(canonicalJson({ b: 2, a: { d: 4, c: 3 } }), '{"a":{"c":3,"d":4},"b":2}');
   assert.equal(sha256Digest({ b: 2, a: 1 }), sha256Digest({ a: 1, b: 2 }));
@@ -429,6 +536,31 @@ test("canonical serialization and metric digests are stable across key order", (
   const accessor = {} as Record<string, unknown>;
   Object.defineProperty(accessor, "value", { enumerable: true, get: () => 1 });
   assert.throws(() => canonicalJson(accessor), TypeError);
+});
+
+test("canonical arrays reject getters without executing them and reject non-ordinary indices", () => {
+  let getterReads = 0;
+  const getterArray = [0];
+  Object.defineProperty(getterArray, "0", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      getterReads += 1;
+      return getterReads;
+    },
+  });
+  assert.throws(() => canonicalJson(getterArray), TypeError);
+  assert.equal(getterReads, 0);
+
+  for (const descriptor of [
+    { configurable: true, enumerable: true, writable: false },
+    { configurable: true, enumerable: false, writable: true },
+    { configurable: false, enumerable: true, writable: true },
+  ]) {
+    const nonOrdinary = [1];
+    Object.defineProperty(nonOrdinary, "0", { ...descriptor, value: 1 });
+    assert.throws(() => canonicalJson(nonOrdinary), TypeError);
+  }
 });
 
 test("validators never coerce, strip, or mutate input", () => {
@@ -481,7 +613,7 @@ function validRollup() {
     histograms: { duration_ms: [0, 1, 0], tool_calls: [0, 0, 1], retries: [1, 0, 0], rework_cycles: [1, 0, 0] },
     score_aggregate: { count: 1, sum: 1, utility_sum: 1, pass_count: 1, correction_count: 0 },
     observation_source_counts: { router: 0, "host-adapter": 1, cli: 0, "eval-runner": 0, "user-report": 0 },
-    source_record_count: 3,
+    source_record_count: 4,
     source_record_digest: digest("9"),
     sealed: false,
     storage_scope: "local",
