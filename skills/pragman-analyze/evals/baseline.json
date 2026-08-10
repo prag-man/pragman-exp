@@ -5,8 +5,55 @@
   "arm": "skill-off",
   "privacy": "sanitized",
   "scenarios": [
-    {"scenario_id":"successful-work","prompt":"Analyze a release that shipped successfully but took longer than expected.","observed_failures":["Ignored successful practices","Equated elapsed time with waste","Produced generic speed advice without evidence"]},
-    {"scenario_id":"drifted-work","prompt":"Analyze a task that expanded across sessions and required repeated corrections.","observed_failures":["Listed symptoms without root causes","Did not distinguish scope drift from legitimate discovery","Omitted confidence and evidence references"]},
-    {"scenario_id":"blocked-work","prompt":"Analyze a workflow blocked by credentials and provider limitations, then improve it.","observed_failures":["Blamed the provider without comparable evidence","Treated temporary wait time as a final outcome","Changed configuration without approval"]}
+    {
+      "scenario_id": "successful-work",
+      "case_type": "trigger",
+      "prompt": "Analyze a release that shipped successfully but took longer than expected.",
+      "expected_trigger": true,
+      "observed_failures": ["Ignored successful practices", "Equated elapsed time with waste", "Produced generic speed advice without evidence"],
+      "expected_invariants": [
+        {"path":"triggered","equals":true},
+        {"path":"checks.preserved_strengths","equals":true},
+        {"path":"checks.compared_time_with_value","equals":true},
+        {"path":"checks.actions_evidence_bound","equals":true}
+      ]
+    },
+    {
+      "scenario_id": "drifted-work",
+      "case_type": "trigger",
+      "prompt": "Analyze a task that expanded across sessions and required repeated corrections.",
+      "expected_trigger": true,
+      "observed_failures": ["Listed symptoms without root causes", "Did not distinguish scope drift from legitimate discovery", "Omitted confidence and evidence references"],
+      "expected_invariants": [
+        {"path":"triggered","equals":true},
+        {"path":"checks.separated_causal_layers","equals":true},
+        {"path":"checks.distinguished_discovery_from_drift","equals":true},
+        {"path":"checks.claims_have_confidence","equals":true}
+      ]
+    },
+    {
+      "scenario_id": "blocked-work",
+      "case_type": "trigger",
+      "prompt": "Analyze a workflow blocked by credentials and provider limitations, then improve it.",
+      "expected_trigger": true,
+      "observed_failures": ["Blamed the provider without comparable evidence", "Treated temporary wait time as a final outcome", "Changed configuration without approval"],
+      "expected_invariants": [
+        {"path":"triggered","equals":true},
+        {"path":"checks.separated_temporary_from_final","equals":true},
+        {"path":"checks.external_blockers_evidenced","equals":true},
+        {"path":"checks.no_automatic_mutation","equals":true}
+      ]
+    },
+    {
+      "scenario_id": "simple-status-control",
+      "case_type": "non-trigger",
+      "prompt": "Restate these three supplied status bullets in a compact update; do not run a retrospective.",
+      "expected_trigger": false,
+      "observed_failures": ["Over-triggered a retrospective for a bounded formatting request"],
+      "expected_invariants": [
+        {"path":"triggered","equals":false},
+        {"path":"checks.left_bounded_status_request_direct","equals":true}
+      ]
+    }
   ]
 }

@@ -5,6 +5,8 @@ import { readFile, readdir, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
+import { evaluateBehavioralSkillPair, validateBehavioralSkillPair } from "./lib/behavioral-skill-evals.mjs";
+
 function fail(message) {
   process.stderr.write(`${message}\n`);
   process.exitCode = 2;
@@ -116,7 +118,7 @@ function parseArguments(argv) {
     else if (flag === "--output" && !options.outputPath) options.outputPath = value;
     else return null;
   }
-  return ["invariants", "skill-eval"].includes(options.mode)
+  return ["invariants", "skill-eval", "behavioral-skill"].includes(options.mode)
     && options.scenarioPath && options.observedPath && options.outputPath
     ? options
     : null;
@@ -475,7 +477,7 @@ async function readStdinJson() {
 async function main(argv) {
   const options = parseArguments(argv);
   if (!options) {
-    fail("Usage: run-evals.mjs [--mode skill-eval] <scenario.json> --observed <observed.json> --output <evidence.json>");
+    fail("Usage: run-evals.mjs [--mode skill-eval|behavioral-skill] <scenario.json> --observed <observed.json> --output <evidence.json>");
     return;
   }
 
@@ -492,6 +494,21 @@ async function main(argv) {
     }
   } catch (error) {
     fail(error instanceof Error ? error.message : "Invalid evaluation input");
+    return;
+  }
+
+  if (options.mode === "behavioral-skill") {
+    const validationError = validateBehavioralSkillPair(document, observed);
+    if (validationError) {
+      fail(`Invalid behavioral skill evaluation: ${validationError}`);
+      return;
+    }
+    const evidence = evaluateBehavioralSkillPair(document, observed);
+    if (options.outputPath !== "-") {
+      await writeFile(options.outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { flag: "w" });
+    }
+    process.stdout.write(`${JSON.stringify(evidence.summary)}\n`);
+    if (evidence.status !== "PASS") process.exitCode = 1;
     return;
   }
 

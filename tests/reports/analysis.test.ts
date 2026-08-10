@@ -73,8 +73,10 @@ test("ships an evidence-bound analysis skill with paired successful, drifted, an
   assert.match(skill, /not silent configuration changes|do not automatically modify/i);
   assert.match(reference, /Eleven required dimensions/);
   for (const group of ["Keep", "Change", "Stop", "Automate", "Learn", "Test next"]) assert.match(reference, new RegExp(`\\b${group.replace(" ", "\\s+")}\\b`));
-  assert.deepEqual(baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), ["successful-work", "drifted-work", "blocked-work"]);
+  assert.deepEqual(baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), ["successful-work", "drifted-work", "blocked-work", "simple-status-control"]);
   assert.deepEqual(baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), forward.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id));
-  assert.equal(forward.scenarios.every((scenario: { passed: boolean }) => scenario.passed), true);
+  assert.equal(baseline.scenarios.some((scenario: { case_type: string }) => scenario.case_type === "non-trigger"), true);
+  assert.equal(forward.scenarios.every((scenario: { observation: { triggered: boolean } }) => typeof scenario.observation.triggered === "boolean"), true);
+  assert.equal(JSON.stringify(forward).includes('"passed"'), false);
   assert.equal([skill, compatibility, metadata, reference].join("\n").includes("/Users/"), false);
 });

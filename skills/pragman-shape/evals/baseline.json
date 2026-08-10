@@ -1,12 +1,9 @@
 {
-  "schema_version": 1,
-  "skill_id": "pragman-shape",
-  "evaluation_kind": "behavioral",
-  "arm": "skill-off",
-  "privacy": "sanitized",
-  "scenarios": [
-    {"scenario_id":"vague-idea","prompt":"We should add an AI assistant to our product.","observed_failures":["Accepted the solution as the problem","Invented user evidence","Started architecture before defining an outcome"]},
-    {"scenario_id":"oversized-build","prompt":"Build the complete operating platform across every department.","observed_failures":["Produced an enormous implementation plan","Had no smallest valuable slice","Did not split approval and reversibility boundaries"]},
-    {"scenario_id":"low-evidence-bet","prompt":"Launch this strategic feature because competitors appear to have it.","observed_failures":["Treated competitor presence as user demand","Omitted kill criteria","Did not propose a cheaper evidence test"]}
+  "schema_version": 1,"skill_id":"pragman-shape","evaluation_kind":"behavioral","arm":"skill-off","privacy":"sanitized",
+  "scenarios":[
+    {"scenario_id":"vague-idea","case_type":"trigger","prompt":"We should add an AI assistant to our product.","expected_trigger":true,"observed_failures":["Accepted the solution as the problem","Invented supporting evidence","Produced a feature list instead of an outcome"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.problem_separate_from_solution","equals":true},{"path":"checks.evidence_separate_from_assumptions","equals":true},{"path":"checks.outcome_behavioral","equals":true}]},
+    {"scenario_id":"oversized-build","case_type":"trigger","prompt":"Build the complete operating platform across every department.","expected_trigger":true,"observed_failures":["Made roadmap-sized work look executable","Skipped non-goals","Omitted failure evidence and approval splits"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.smallest_reversible_slice","equals":true},{"path":"checks.non_goals_explicit","equals":true},{"path":"checks.kill_criterion_defined","equals":true}]},
+    {"scenario_id":"low-evidence-bet","case_type":"trigger","prompt":"Launch this strategic feature because competitors appear to have it.","expected_trigger":true,"observed_failures":["Treated weak competitor evidence as fact","Recommended the full build","Had no inconclusive outcome"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.evidence_weakness_disclosed","equals":true},{"path":"checks.high_risk_assumption_tested_first","equals":true},{"path":"checks.inconclusive_next_step","equals":true}]},
+    {"scenario_id":"defined-fix-control","case_type":"non-trigger","prompt":"Fix the reproducible typo described here; the desired text and acceptance check are already explicit.","expected_trigger":false,"observed_failures":["Re-shaped a bounded implementation-ready correction"],"expected_invariants":[{"path":"triggered","equals":false},{"path":"checks.left_ready_task_to_execution","equals":true}]}
   ]
 }

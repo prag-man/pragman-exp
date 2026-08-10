@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 
 import { parse } from "yaml";
 
+import { evaluateBehavioralSkillPair, validateBehavioralSkillPair } from "./lib/behavioral-skill-evals.mjs";
+
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const skillsRoot = join(repositoryRoot, "skills");
 const expected = [
@@ -50,16 +52,22 @@ async function validateSkill(name) {
     if (!info?.isFile() || info.isSymbolicLink()) fail(`${name}: broken skill link ${link}`);
   }
   const [baseline, forward] = await Promise.all(["baseline", "forward"].map(async (arm) => JSON.parse(await readFile(join(root, `evals/${arm}.json`), "utf8"))));
-  if (baseline.schema_version !== 1 || forward.schema_version !== 1 || baseline.skill_id !== name || forward.skill_id !== name
-    || baseline.arm !== "skill-off" || forward.arm !== "skill-on" || !Array.isArray(baseline.scenarios) || baseline.scenarios.length < 3
-    || !Array.isArray(forward.scenarios)) fail(`${name}: invalid paired eval envelope`);
-  const baselineIds = baseline.scenarios.map((scenario) => scenario.scenario_id);
-  const forwardIds = forward.scenarios.map((scenario) => scenario.scenario_id);
-  if (new Set(baselineIds).size !== baselineIds.length || JSON.stringify(baselineIds) !== JSON.stringify(forwardIds)
-    || !forward.scenarios.every((scenario) => scenario.passed === true && Array.isArray(scenario.invariants) && scenario.invariants.length > 0)) fail(`${name}: paired eval scenarios do not match`);
+  const evalError = validateBehavioralSkillPair(baseline, forward, name);
+  if (evalError) fail(`${name}: ${evalError}`);
+  const behavioralEvidence = evaluateBehavioralSkillPair(baseline, forward);
+  if (behavioralEvidence.status !== "PASS") fail(`${name}: behavioral eval invariants failed`);
   const publicText = [skill, compatibility, JSON.stringify(metadata), JSON.stringify(baseline), JSON.stringify(forward)].join("\n");
   if (PRIVATE_PATH.test(publicText)) fail(`${name}: private absolute path detected`);
-  return { name, scenarios: baseline.scenarios.length, lines: skill.split(/\r?\n/).length };
+  return {
+    name,
+    scenarios: baseline.scenarios.length,
+    lines: skill.split(/\r?\n/).length,
+    trigger_cases: behavioralEvidence.summary.trigger_cases,
+    non_trigger_cases: behavioralEvidence.summary.non_trigger_cases,
+    evaluated_invariants: behavioralEvidence.summary.evaluated_invariants,
+    passed_invariants: behavioralEvidence.summary.passed_invariants,
+    behavioral_status: behavioralEvidence.status,
+  };
 }
 
 const entries = (await readdir(skillsRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory() && !entry.isSymbolicLink()).map((entry) => entry.name).sort();

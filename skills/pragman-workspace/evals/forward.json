@@ -1,24 +1,9 @@
 {
-  "schema_version": 1,
-  "skill_id": "pragman-workspace",
-  "evaluation_kind": "behavioral",
-  "arm": "skill-on",
-  "privacy": "sanitized",
-  "scenarios": [
-    {
-      "scenario_id": "multiple-workspaces",
-      "passed": true,
-      "invariants": ["One primary workspace", "Ordered additional workspace aliases", "Conflicts stay unresolved until chosen", "No cross-workspace scalar override"]
-    },
-    {
-      "scenario_id": "primary-project-link",
-      "passed": true,
-      "invariants": ["Exactly one primary link", "Preview before mutation", "Apply bound to unchanged digest", "Post-apply validation"]
-    },
-    {
-      "scenario_id": "canonical-context-privacy",
-      "passed": true,
-      "invariants": ["Canonical source is referenced, not copied", "Sensitivity is explicit", "Outputs omit paths and source bodies", "CLI-unavailable limitations disclosed"]
-    }
+  "schema_version": 1,"skill_id":"pragman-workspace","evaluation_kind":"behavioral","arm":"skill-on","privacy":"sanitized","observation_source":"curated-structured-observation",
+  "scenarios":[
+    {"scenario_id":"multiple-workspaces","observation":{"triggered":true,"checks":{"one_primary_workspace":true,"additional_order_advisory":true,"conflicts_require_choice":true}}},
+    {"scenario_id":"primary-project-link","observation":{"triggered":true,"checks":{"exactly_one_primary_link":true,"digest_bound_preview":true,"post_apply_validation":true}}},
+    {"scenario_id":"canonical-context-privacy","observation":{"triggered":true,"checks":{"canonical_source_referenced":true,"sensitivity_explicit":true,"private_bodies_omitted":true}}},
+    {"scenario_id":"one-off-fact-control","observation":{"triggered":false,"checks":{"fact_remained_request_local":true}}}
   ]
 }

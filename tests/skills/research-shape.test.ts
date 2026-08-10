@@ -20,9 +20,11 @@ test("research selects the lightest sufficient method and covers all required sc
   assert.match(artifact.skill, /decision it must enable/i);
   assert.match(artifact.skill, /independent fan-out/i);
   assert.match(artifact.skill, /source plan and egress boundary/i);
-  assert.deepEqual(artifact.baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), ["quick", "technical-source-first", "fanout", "decision", "internal"]);
+  assert.deepEqual(artifact.baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), ["quick", "technical-source-first", "fanout", "decision", "internal", "provided-text-control"]);
   assert.deepEqual(artifact.baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), artifact.forward.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id));
-  assert.equal(artifact.forward.scenarios.every((scenario: { passed: boolean }) => scenario.passed), true);
+  assert.equal(artifact.baseline.scenarios.some((scenario: { case_type: string }) => scenario.case_type === "non-trigger"), true);
+  assert.equal(artifact.forward.scenarios.every((scenario: { observation: { triggered: boolean } }) => typeof scenario.observation.triggered === "boolean"), true);
+  assert.equal(JSON.stringify(artifact.forward).includes('"passed"'), false);
   assert.equal(Object.values(artifact).map(String).join("\n").includes("/Users/"), false);
 });
 
@@ -30,8 +32,10 @@ test("shape requires evidence, a smallest bet, success and kill criteria, and a 
   const artifact = await loadSkill("pragman-shape");
   for (const term of ["evidence", "smallest valuable", "non-goals", "success", "kill criterion", "dependencies", "route"]) assert.match(artifact.skill, new RegExp(term, "i"));
   assert.match(artifact.reference, /obvious-fast \| adaptive-default \| deep-deliberate \| operational/);
-  assert.deepEqual(artifact.baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), ["vague-idea", "oversized-build", "low-evidence-bet"]);
+  assert.deepEqual(artifact.baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), ["vague-idea", "oversized-build", "low-evidence-bet", "defined-fix-control"]);
   assert.deepEqual(artifact.baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), artifact.forward.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id));
-  assert.equal(artifact.forward.scenarios.every((scenario: { passed: boolean }) => scenario.passed), true);
+  assert.equal(artifact.baseline.scenarios.some((scenario: { case_type: string }) => scenario.case_type === "non-trigger"), true);
+  assert.equal(artifact.forward.scenarios.every((scenario: { observation: { triggered: boolean } }) => typeof scenario.observation.triggered === "boolean"), true);
+  assert.equal(JSON.stringify(artifact.forward).includes('"passed"'), false);
   assert.equal(Object.values(artifact).map(String).join("\n").includes("/Users/"), false);
 });

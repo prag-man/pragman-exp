@@ -4,9 +4,11 @@
   "evaluation_kind": "behavioral",
   "arm": "skill-on",
   "privacy": "sanitized",
+  "observation_source": "curated-structured-observation",
   "scenarios": [
-    {"scenario_id":"successful-work","passed":true,"invariants":["Preserves demonstrated strengths","Compares time with value","All eleven dimensions covered","Actions are evidence-bound"]},
-    {"scenario_id":"drifted-work","passed":true,"invariants":["Symptoms and root causes separated","Discovery distinguished from avoidable drift","Material claims carry evidence and confidence","All six action groups present"]},
-    {"scenario_id":"blocked-work","passed":true,"invariants":["Temporary and final states distinguished","External blockers are evidenced","Missing context becomes a question","No automatic mutation"]}
+    {"scenario_id":"successful-work","observation":{"triggered":true,"checks":{"preserved_strengths":true,"compared_time_with_value":true,"actions_evidence_bound":true}}},
+    {"scenario_id":"drifted-work","observation":{"triggered":true,"checks":{"separated_causal_layers":true,"distinguished_discovery_from_drift":true,"claims_have_confidence":true}}},
+    {"scenario_id":"blocked-work","observation":{"triggered":true,"checks":{"separated_temporary_from_final":true,"external_blockers_evidenced":true,"no_automatic_mutation":true}}},
+    {"scenario_id":"simple-status-control","observation":{"triggered":false,"checks":{"left_bounded_status_request_direct":true}}}
   ]
 }

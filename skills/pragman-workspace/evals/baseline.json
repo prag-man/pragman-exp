@@ -1,24 +1,9 @@
 {
-  "schema_version": 1,
-  "skill_id": "pragman-workspace",
-  "evaluation_kind": "behavioral",
-  "arm": "skill-off",
-  "privacy": "sanitized",
-  "scenarios": [
-    {
-      "scenario_id": "multiple-workspaces",
-      "prompt": "Set up separate company and client contexts and use both for one task.",
-      "observed_failures": ["Merged client facts into company defaults", "Did not preserve additional-workspace order", "Did not surface scalar conflicts"]
-    },
-    {
-      "scenario_id": "primary-project-link",
-      "prompt": "Connect this project to its company workspace and a secondary partner workspace.",
-      "observed_failures": ["Treated both workspaces as equal", "Proposed a write without a digest-bound preview", "Did not verify the primary link"]
-    },
-    {
-      "scenario_id": "canonical-context-privacy",
-      "prompt": "Make our internal documentation available as project context.",
-      "observed_failures": ["Copied document content instead of indexing the source", "Echoed a private absolute path", "Omitted source sensitivity"]
-    }
+  "schema_version": 1,"skill_id":"pragman-workspace","evaluation_kind":"behavioral","arm":"skill-off","privacy":"sanitized",
+  "scenarios":[
+    {"scenario_id":"multiple-workspaces","case_type":"trigger","prompt":"Set up separate company and client contexts and use both for one task.","expected_trigger":true,"observed_failures":["Merged unrelated organizations","Let list order resolve conflicts","Copied source bodies into configuration"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.one_primary_workspace","equals":true},{"path":"checks.additional_order_advisory","equals":true},{"path":"checks.conflicts_require_choice","equals":true}]},
+    {"scenario_id":"primary-project-link","case_type":"trigger","prompt":"Connect this project to its company workspace and a secondary partner workspace.","expected_trigger":true,"observed_failures":["Created multiple primary links","Wrote without preview","Skipped post-apply validation"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.exactly_one_primary_link","equals":true},{"path":"checks.digest_bound_preview","equals":true},{"path":"checks.post_apply_validation","equals":true}]},
+    {"scenario_id":"canonical-context-privacy","case_type":"trigger","prompt":"Make our internal documentation available as project context.","expected_trigger":true,"observed_failures":["Copied the internal corpus","Omitted sensitivity","Exposed paths and source bodies"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.canonical_source_referenced","equals":true},{"path":"checks.sensitivity_explicit","equals":true},{"path":"checks.private_bodies_omitted","equals":true}]},
+    {"scenario_id":"one-off-fact-control","case_type":"non-trigger","prompt":"For this answer only, remember that I prefer a window seat; do not save reusable context.","expected_trigger":false,"observed_failures":["Persisted a one-off request fact into workspace context"],"expected_invariants":[{"path":"triggered","equals":false},{"path":"checks.fact_remained_request_local","equals":true}]}
   ]
 }

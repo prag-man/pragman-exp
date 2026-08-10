@@ -1,13 +1,10 @@
 {
-  "schema_version": 1,
-  "skill_id": "pragman-router",
-  "evaluation_kind": "behavioral",
-  "arm": "skill-on",
-  "privacy": "sanitized",
-  "scenarios": [
-    {"scenario_id":"obvious-fast","passed":true,"invariants":["Fast lane without interview","Lightest eligible capability","Read-only work proceeds","Compact explanation"]},
-    {"scenario_id":"ambiguous-deep","passed":true,"invariants":["One route-changing question at a time","Deep shaping before execution","Material assumptions disclosed","Capabilities selected before providers"]},
-    {"scenario_id":"operational","passed":true,"invariants":["Operational lane","Preparation separated from live mutation","Credential and target approvals preserved","Minimum task-local context"]},
-    {"scenario_id":"fallback-recursion","passed":true,"invariants":["Missing capability disclosed","Fallback trust/compatibility explicit","No false invocation or success","Route depth bounded"]}
+  "schema_version": 1,"skill_id":"pragman-router","evaluation_kind":"behavioral","arm":"skill-on","privacy":"sanitized","observation_source":"curated-structured-observation",
+  "scenarios":[
+    {"scenario_id":"obvious-fast","observation":{"triggered":true,"checks":{"fast_lane_no_interview":true,"lightest_capability":true,"compact_explanation":true}}},
+    {"scenario_id":"ambiguous-deep","observation":{"triggered":true,"checks":{"one_route_question_at_a_time":true,"deep_shape_before_execution":true,"capabilities_before_providers":true}}},
+    {"scenario_id":"operational","observation":{"triggered":true,"checks":{"operational_lane":true,"preparation_separate_from_mutation":true,"minimum_context":true}}},
+    {"scenario_id":"fallback-recursion","observation":{"triggered":true,"checks":{"missing_capability_disclosed":true,"fallback_trust_explicit":true,"route_depth_bounded":true}}},
+    {"scenario_id":"trivial-answer-control","observation":{"triggered":false,"checks":{"direct_answer_preserved":true}}}
   ]
 }

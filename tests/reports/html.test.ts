@@ -78,6 +78,8 @@ test("ships a portable prototype skill with a network-free clickable fallback an
   assert.match(asset, /<main id="flow">/);
   assert.doesNotMatch(asset, /https?:\/\//);
   assert.deepEqual(baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), forward.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id));
-  assert.equal(forward.scenarios.every((scenario: { passed: boolean }) => scenario.passed), true);
+  assert.equal(baseline.scenarios.some((scenario: { case_type: string }) => scenario.case_type === "non-trigger"), true);
+  assert.equal(forward.scenarios.every((scenario: { observation: { triggered: boolean } }) => typeof scenario.observation.triggered === "boolean"), true);
+  assert.equal(JSON.stringify(forward).includes('"passed"'), false);
   assert.equal([skill, compatibility, metadata, reference, asset].join("\n").includes("/Users/"), false);
 });

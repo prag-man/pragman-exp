@@ -6,19 +6,24 @@
   "privacy": "sanitized",
   "scenarios": [
     {
-      "scenario_id": "clean-environment",
-      "prompt": "Set up Pragman in a clean Codex environment and improve my workflow.",
-      "observed_failures": ["Asked a long generic interview before using defaults", "Proposed installation or writes without a digest-bound preview", "Claimed setup success without doctor evidence"]
+      "scenario_id":"clean-environment","case_type":"trigger","prompt":"Set up Pragman in a clean Codex environment and improve my workflow.","expected_trigger":true,
+      "observed_failures":["Asked a long generic interview before using defaults","Proposed installation or writes without a digest-bound preview","Claimed setup success without doctor evidence"],
+      "expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.questions_bounded","equals":true},{"path":"checks.preview_before_write","equals":true},{"path":"checks.doctor_evidence_required","equals":true}]
     },
     {
-      "scenario_id": "populated-environment",
-      "prompt": "Reconfigure Pragman; I already have Codex and Claude skills plus workspaces.",
-      "observed_failures": ["Re-asked for installed tools and workspace inventory", "Inspected broad home-directory content", "Did not preserve healthy existing configuration"]
+      "scenario_id":"populated-environment","case_type":"trigger","prompt":"Reconfigure Pragman; I already have Codex and Claude skills plus workspaces.","expected_trigger":true,
+      "observed_failures":["Re-asked for installed tools and workspace inventory","Inspected broad home-directory content","Did not preserve healthy existing configuration"],
+      "expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.discovered_answers_not_reasked","equals":true},{"path":"checks.known_metadata_roots_only","equals":true},{"path":"checks.healthy_config_preserved","equals":true}]
     },
     {
-      "scenario_id": "broken-shadowed-environment",
-      "prompt": "Fix project and user installs with the same skill name at different versions and malformed metadata.",
-      "observed_failures": ["Read untrusted skill content and secret-bearing host files", "Silently selected one installation", "Reported a successful route without an executable provider"]
+      "scenario_id":"broken-shadowed-environment","case_type":"trigger","prompt":"Fix project and user installs with the same skill name at different versions and malformed metadata.","expected_trigger":true,
+      "observed_failures":["Read untrusted skill content and secret-bearing host files","Silently selected one installation","Reported a successful route without an executable provider"],
+      "expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.malformed_metadata_degraded","equals":true},{"path":"checks.digest_conflict_blocks_write","equals":true},{"path":"checks.manual_handoff_not_execution","equals":true}]
+    },
+    {
+      "scenario_id":"explanation-only-control","case_type":"non-trigger","prompt":"Briefly explain what Pragman Init is; do not inspect or configure this machine.","expected_trigger":false,
+      "observed_failures":["Started environment discovery for an explanation-only request"],
+      "expected_invariants":[{"path":"triggered","equals":false},{"path":"checks.no_environment_scan","equals":true}]
     }
   ]
 }

@@ -1,12 +1,9 @@
 {
-  "schema_version": 1,
-  "skill_id": "pragman-shape",
-  "evaluation_kind": "behavioral",
-  "arm": "skill-on",
-  "privacy": "sanitized",
-  "scenarios": [
-    {"scenario_id":"vague-idea","passed":true,"invariants":["Problem separated from solution","User and trigger explicit","Evidence and assumptions separated","Outcome is behavioral"]},
-    {"scenario_id":"oversized-build","passed":true,"invariants":["Smallest valuable reversible slice","Explicit non-goals","Success and kill criteria","Approval boundaries split"]},
-    {"scenario_id":"low-evidence-bet","passed":true,"invariants":["Evidence weakness disclosed","Cheapest high-risk assumption test","Time or cost box","Inconclusive next step"]}
+  "schema_version": 1,"skill_id":"pragman-shape","evaluation_kind":"behavioral","arm":"skill-on","privacy":"sanitized","observation_source":"curated-structured-observation",
+  "scenarios":[
+    {"scenario_id":"vague-idea","observation":{"triggered":true,"checks":{"problem_separate_from_solution":true,"evidence_separate_from_assumptions":true,"outcome_behavioral":true}}},
+    {"scenario_id":"oversized-build","observation":{"triggered":true,"checks":{"smallest_reversible_slice":true,"non_goals_explicit":true,"kill_criterion_defined":true}}},
+    {"scenario_id":"low-evidence-bet","observation":{"triggered":true,"checks":{"evidence_weakness_disclosed":true,"high_risk_assumption_tested_first":true,"inconclusive_next_step":true}}},
+    {"scenario_id":"defined-fix-control","observation":{"triggered":false,"checks":{"left_ready_task_to_execution":true}}}
   ]
 }

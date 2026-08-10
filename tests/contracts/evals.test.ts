@@ -98,6 +98,125 @@ async function runSkillEvaluation(
   return { result, evidence };
 }
 
+async function runBehavioralSkillEvaluation(
+  baseline: Record<string, unknown>,
+  forward: Record<string, unknown>,
+) {
+  const directory = await mkdtemp(join(tmpdir(), "pragman-behavioral-skill-evals-"));
+  const baselinePath = join(directory, "baseline.json");
+  const forwardPath = join(directory, "forward.json");
+  const evidencePath = join(directory, "evidence.json");
+  await writeFile(baselinePath, JSON.stringify(baseline));
+  await writeFile(forwardPath, JSON.stringify(forward));
+  const result = spawnSync(process.execPath, [
+    runner,
+    "--mode",
+    "behavioral-skill",
+    baselinePath,
+    "--observed",
+    forwardPath,
+    "--output",
+    evidencePath,
+  ], { encoding: "utf8" });
+  const evidence = result.status === 0 || result.status === 1
+    ? JSON.parse(await readFile(evidencePath, "utf8"))
+    : null;
+  return { result, evidence };
+}
+
+function behavioralSkillPair() {
+  const baseline = {
+    schema_version: 1,
+    skill_id: "pragman-example",
+    evaluation_kind: "behavioral",
+    arm: "skill-off",
+    privacy: "sanitized",
+    scenarios: [
+      {
+        scenario_id: "positive-control",
+        case_type: "trigger",
+        prompt: "Diagnose why repeated agent work is slow and unreliable.",
+        expected_trigger: true,
+        observed_failures: ["Skipped diagnosis"],
+        expected_invariants: [
+          { path: "triggered", equals: true },
+          { path: "checks.diagnosed_before_tuning", equals: true },
+        ],
+      },
+      {
+        scenario_id: "negative-control",
+        case_type: "non-trigger",
+        prompt: "Calculate 2 + 2 without changing workflow configuration.",
+        expected_trigger: false,
+        observed_failures: ["Over-triggered on an unrelated bounded request"],
+        expected_invariants: [
+          { path: "triggered", equals: false },
+          { path: "checks.left_request_unrouted", equals: true },
+        ],
+      },
+    ],
+  };
+  const forward = {
+    schema_version: 1,
+    skill_id: "pragman-example",
+    evaluation_kind: "behavioral",
+    arm: "skill-on",
+    privacy: "sanitized",
+    observation_source: "curated-structured-observation",
+    scenarios: [
+      {
+        scenario_id: "positive-control",
+        observation: { triggered: true, checks: { diagnosed_before_tuning: true } },
+      },
+      {
+        scenario_id: "negative-control",
+        observation: { triggered: false, checks: { left_request_unrouted: true } },
+      },
+    ],
+  };
+  return { baseline, forward };
+}
+
+test("behavioral-skill mode derives positive and negative trigger evidence from structured observations", async () => {
+  const { baseline, forward } = behavioralSkillPair();
+  const { result, evidence } = await runBehavioralSkillEvaluation(baseline, forward);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(evidence.summary, {
+    scenarios: 2,
+    trigger_cases: 1,
+    non_trigger_cases: 1,
+    evaluated_invariants: 4,
+    passed_invariants: 4,
+    failed_invariants: 0,
+  });
+  assert.equal(evidence.status, "PASS");
+  assert.equal(evidence.results.every((item: { passed: boolean }) => item.passed), true);
+  assert.equal(JSON.stringify(evidence).includes("Diagnose why"), false);
+  assert.equal(JSON.stringify(evidence).includes("diagnosed_before_tuning"), false);
+});
+
+test("behavioral-skill mode fails a tampered observation and requires a non-trigger control", async () => {
+  const { baseline, forward } = behavioralSkillPair();
+  const tampered = structuredClone(forward);
+  (tampered.scenarios[0] as { observation: { triggered: boolean } }).observation.triggered = false;
+  const failed = await runBehavioralSkillEvaluation(baseline, tampered);
+  assert.equal(failed.result.status, 1, failed.result.stderr);
+  assert.equal(failed.evidence.status, "FAIL");
+  assert.equal(failed.evidence.summary.failed_invariants, 1);
+
+  const missingControl = structuredClone(baseline);
+  missingControl.scenarios = [missingControl.scenarios[0]];
+  const rejected = await runBehavioralSkillEvaluation(missingControl, forward);
+  assert.equal(rejected.result.status, 2);
+  assert.match(rejected.result.stderr, /non-trigger/i);
+
+  const contentBearingTrigger = structuredClone(forward);
+  (contentBearingTrigger.scenarios[0] as { observation: { triggered: unknown } }).observation.triggered = "raw-private-text";
+  const unsafe = await runBehavioralSkillEvaluation(baseline, contentBearingTrigger);
+  assert.equal(unsafe.result.status, 2);
+  assert.match(unsafe.result.stderr, /trigger/i);
+});
+
 test("eval runner validates scenarios and records baseline and forward-test evidence", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pragman-evals-"));
   const scenarioPath = join(directory, "scenario.json");
