@@ -377,6 +377,13 @@ test("skill events capture privacy-safe local metrics and reject raw content or 
   for (const forbidden of ["raw_prompt", "raw_output", "secret"]) {
     assert.equal(validate({ ...event, [forbidden]: "must-not-be-stored" }), false, forbidden);
   }
+  for (const [field, benignValue] of [
+    ["skill_id", "task-review"],
+    ["outcome", "risk-analysis"],
+  ]) {
+    assert.equal(validate({ ...event, [field]: benignValue }), true, `${field}: ${benignValue}`);
+  }
+  assert.equal(validate({ ...event, source_aliases: ["mask-output"] }), true, "source_aliases: mask-output");
   for (const [field, unsafeValue] of [
     ["skill_version", "x".repeat(129)],
     ["host_version", "version with whitespace"],
@@ -387,22 +394,23 @@ test("skill events capture privacy-safe local metrics and reject raw content or 
   ]) {
     assert.equal(validate({ ...event, [field]: unsafeValue }), false, `${field}: ${unsafeValue}`);
   }
+  const realisticToken = "sk-proj-1234567890abcdefghijkl";
   for (const [field, embeddedSecret] of [
-    ["skill_id", "review-sk-proj-secret"],
-    ["skill_version", "v1-sk-proj-secret"],
-    ["host", "codex-sk-proj-secret"],
-    ["host_version", "v1-sk-proj-secret"],
-    ["model", "gpt-sk-proj-secret"],
-    ["model_version", "v1-sk-proj-secret"],
-    ["harness_version", "v1-sk-proj-secret"],
-    ["session_id", "session-sk-proj-secret"],
-    ["eval_id", "eval-sk-proj-secret"],
-    ["case_id", "case-sk-proj-secret"],
-    ["trial_id", "trial-sk-proj-secret"],
-    ["outcome", "completed-sk-proj-secret"],
-    ["provider", "pragman:review-sk-proj-secret"],
+    ["skill_id", `review-${realisticToken}`],
+    ["skill_version", `v1-${realisticToken}`],
+    ["host", `codex-${realisticToken}`],
+    ["host_version", `v1-${realisticToken}`],
+    ["model", `gpt-${realisticToken}`],
+    ["model_version", `v1-${realisticToken}`],
+    ["harness_version", `v1-${realisticToken}`],
+    ["session_id", `session-${realisticToken}`],
+    ["eval_id", `eval-${realisticToken}`],
+    ["case_id", `case-${realisticToken}`],
+    ["trial_id", `trial-${realisticToken}`],
+    ["outcome", `completed-${realisticToken}`],
+    ["provider", `pragman:review-${realisticToken}`],
   ]) {
     assert.equal(validate({ ...event, [field]: embeddedSecret }), false, `${field}: embedded token`);
   }
-  assert.equal(validate({ ...event, source_aliases: ["workspace-sk-proj-secret"] }), false, "source_aliases: embedded token");
+  assert.equal(validate({ ...event, source_aliases: [`workspace-${realisticToken}`] }), false, "source_aliases: embedded token");
 });
