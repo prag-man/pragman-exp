@@ -1,16 +1,21 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
 import { satisfiesVersionRange, type HealthState, type HostId, type ProviderDefinition } from "../packages/provider-registry/src/index.ts";
+import type { SkillEvent } from "../packages/events/src/types.ts";
 import {
+  boundedContextContentDigest,
   createBoundedContext,
   type AdapterTaskContract,
   type BoundedContext,
   type CancellationResult,
+  type EgressApproval,
+  type EgressApprovalVerifier,
   type HostAdapter,
   type HostCapability,
   type HostRuntime,
   type InvocationHandle,
+  type ProviderLifecycleObserver,
   type ProviderResult,
   type RuntimeProviderResult,
   type SessionSource,
@@ -27,13 +32,40 @@ export interface AdapterCompatibility {
 export interface CreateHostAdapterOptions {
   host_version: string;
   runtime: HostRuntime;
+  verify_egress_approval?: EgressApprovalVerifier;
+  lifecycle_observer?: ProviderLifecycleObserver;
+  now?: () => Date;
+}
+
+interface ProviderObservationState {
+  provider: ProviderDefinition;
+  started_at_ms: number;
+  source_aliases: string[];
+  terminal_observed: boolean;
+}
+
+const SENSITIVITY_RANK = { public: 0, internal: 1, confidential: 2, restricted: 3 } as const;
+
+function uuidV7(): string {
+  const bytes = randomBytes(16);
+  let milliseconds = Date.now();
+  for (let index = 5; index >= 0; index -= 1) {
+    bytes[index] = milliseconds & 0xff;
+    milliseconds = Math.floor(milliseconds / 256);
+  }
+  bytes[6] = (bytes[6]! & 0x0f) | 0x70;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function sha256(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
 function boundedSummary(value: string): string {
   return value.length <= 1_000 ? value : `${value.slice(0, 997)}...`;
 }
-
-const SENSITIVITY_RANK = { public: 0, internal: 1, confidential: 2, restricted: 3 } as const;
 
 function enforceContextPolicy(provider: ProviderDefinition, context: BoundedContext): void {
   const classes = new Set(provider.context_policy.accepted_classes);
@@ -50,6 +82,42 @@ function enforceContextPolicy(provider: ProviderDefinition, context: BoundedCont
     || exceedsSensitivity) {
     throw Object.assign(new Error("Bounded context violates the provider policy"), { code: "CONTEXT_POLICY_VIOLATION" });
   }
+}
+
+function disclosureAliases(context: BoundedContext): string[] {
+  return [...new Set([
+    ...context.summaries.map((entry) => entry.source_alias),
+    ...context.redacted_excerpts.map((entry) => entry.source_alias),
+  ])].sort();
+}
+
+function disclosureCategories(context: BoundedContext): string[] {
+  return [...new Set([
+    ...context.summaries.map((entry) => entry.data_category),
+    ...context.redacted_excerpts.map((entry) => entry.data_category),
+  ])].sort();
+}
+
+function disclosedFields(context: BoundedContext): string[] {
+  return [...new Set([
+    ...context.summaries.map((entry) => entry.disclosed_field),
+    ...context.redacted_excerpts.map((entry) => entry.disclosed_field),
+  ])].sort();
+}
+
+function disclosureSensitivity(context: BoundedContext): EgressApproval["effective_sensitivity"] {
+  const values = [
+    ...context.summaries.map((entry) => entry.sensitivity),
+    ...context.redacted_excerpts.map((entry) => entry.sensitivity),
+  ];
+  return values.reduce<EgressApproval["effective_sensitivity"]>(
+    (highest, value) => SENSITIVITY_RANK[value] > SENSITIVITY_RANK[highest] ? value : highest,
+    "public",
+  );
+}
+
+function approvalError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code });
 }
 
 function normalizeRuntimeResult(handle: InvocationHandle, value: RuntimeProviderResult): ProviderResult {
@@ -92,12 +160,129 @@ export class ConcreteHostAdapter implements HostAdapter {
   readonly #runtime: HostRuntime;
   readonly #compatibility: AdapterCompatibility;
   readonly #handles = new Map<string, InvocationHandle>();
+  readonly #observations = new Map<string, ProviderObservationState>();
+  readonly #verifyEgressApproval: EgressApprovalVerifier | undefined;
+  readonly #lifecycleObserver: ProviderLifecycleObserver | undefined;
+  readonly #now: () => Date;
 
-  constructor(host: HostId, host_version: string, runtime: HostRuntime, compatibility: AdapterCompatibility) {
+  constructor(
+    host: HostId,
+    host_version: string,
+    runtime: HostRuntime,
+    compatibility: AdapterCompatibility,
+    options: Pick<CreateHostAdapterOptions, "verify_egress_approval" | "lifecycle_observer" | "now"> = {},
+  ) {
     this.host = host;
     this.host_version = host_version;
     this.#runtime = runtime;
     this.#compatibility = compatibility;
+    this.#verifyEgressApproval = options.verify_egress_approval;
+    this.#lifecycleObserver = options.lifecycle_observer;
+    this.#now = options.now ?? (() => new Date());
+  }
+
+  async #authorizeDisclosure(provider: ProviderDefinition, contract: AdapterTaskContract, context: BoundedContext): Promise<void> {
+    const hasDisclosure = context.summaries.length > 0 || context.redacted_excerpts.length > 0;
+    if (!hasDisclosure) return;
+    if (contract.egress_approvals.length === 0) {
+      throw approvalError("EGRESS_APPROVAL_REQUIRED", "Bounded disclosure requires egress approval");
+    }
+    const aliases = disclosureAliases(context);
+    const categories = disclosureCategories(context);
+    const fields = disclosedFields(context);
+    const expectedSensitivity = disclosureSensitivity(context);
+    const now = this.#now().getTime();
+    const contentDigest = boundedContextContentDigest(context);
+    const matching = contract.egress_approvals.filter((approval) => approval.route_id === contract.route_id
+      && approval.provider_id === provider.id
+      && approval.destination === "host-model"
+      && approval.destination_id === this.host
+      && isDeepStrictEqual(approval.source_aliases, aliases)
+      && isDeepStrictEqual(approval.data_categories, categories)
+      && isDeepStrictEqual(approval.disclosed_fields, fields)
+      && approval.effective_sensitivity === expectedSensitivity
+      && approval.content_digest === contentDigest);
+    if (matching.length === 0) {
+      throw approvalError("EGRESS_APPROVAL_MISMATCH", "Egress approval does not match the exact provider disclosure");
+    }
+    const active = matching.filter((approval) => Date.parse(approval.approved_at) <= now && Date.parse(approval.expires_at) > now);
+    if (active.length === 0) {
+      throw approvalError("EGRESS_APPROVAL_EXPIRED", "Egress approval is not currently valid");
+    }
+    if (active.length !== 1) {
+      throw approvalError("EGRESS_APPROVAL_AMBIGUOUS", "Multiple active egress approvals match the provider disclosure");
+    }
+    const approval = active[0]!;
+    if (!this.#verifyEgressApproval) {
+      throw approvalError("EGRESS_APPROVAL_UNTRUSTED", "Egress approval has no trusted verifier");
+    }
+    let trusted = false;
+    try {
+      trusted = await this.#verifyEgressApproval(structuredClone(approval));
+    } catch {
+      trusted = false;
+    }
+    if (!trusted) throw approvalError("EGRESS_APPROVAL_UNTRUSTED", "Egress approval was not authenticated");
+  }
+
+  async #observe(
+    handle: Pick<InvocationHandle, "invocation_id" | "route_id" | "provider_id">,
+    state: ProviderObservationState,
+    eventType: "invoked" | "completed" | "cancelled",
+    status: SkillEvent["status"],
+    outcomeCode: string | null,
+  ): Promise<void> {
+    if (!this.#lifecycleObserver || (eventType !== "invoked" && state.terminal_observed)) return;
+    if (eventType !== "invoked") state.terminal_observed = true;
+    const now = this.#now();
+    const event: SkillEvent = {
+      schema_version: 1,
+      event_id: uuidV7(),
+      invocation_id: handle.invocation_id,
+      timestamp: now.toISOString(),
+      event_type: eventType,
+      skill_id: state.provider.id,
+      skill_version: state.provider.source_version,
+      skill_digest: sha256(state.provider),
+      skill_type: "capability",
+      host: this.host,
+      host_version: this.host_version,
+      model: "none",
+      model_version: "none",
+      harness_version: "1",
+      invocation_mode: "host",
+      session_id: null,
+      route_id: handle.route_id,
+      eval_id: null,
+      case_id: null,
+      trial_id: null,
+      provider: handle.provider_id,
+      ablation_arm: "production",
+      trigger_expected: null,
+      trigger_actual: true,
+      provider_digest: sha256(state.provider),
+      eval_corpus_digest: null,
+      trial_policy_digest: null,
+      status,
+      outcome_code: outcomeCode,
+      duration_ms: eventType === "invoked" ? 0 : Math.max(0, now.getTime() - state.started_at_ms),
+      tool_calls: 0,
+      retries: 0,
+      rework_cycles: 0,
+      verification_checks: 0,
+      verification_passes: 0,
+      observation_source: "host-adapter",
+      source_aliases: state.source_aliases,
+      storage_scope: "local",
+      append_only: true,
+    };
+    try {
+      await this.#lifecycleObserver(event);
+    } catch {
+      // Observation is intentionally best-effort and cannot affect execution.
+    } finally {
+      if (eventType !== "invoked") this.#observations.delete(handle.invocation_id);
+    }
   }
 
   health(): HealthState {
@@ -119,42 +304,97 @@ export class ConcreteHostAdapter implements HostAdapter {
   }
 
   async invoke(provider: ProviderDefinition, contract: AdapterTaskContract, context: BoundedContext): Promise<InvocationHandle> {
+    provider = structuredClone(provider);
     if (this.health() !== "healthy") throw Object.assign(new Error("Host version is incompatible"), { code: "INCOMPATIBLE_HOST_VERSION" });
     if (!provider.host_support.includes(this.host)) throw Object.assign(new Error("Provider does not support this host"), { code: "HOST_UNSUPPORTED" });
     const safeContext = createBoundedContext(context);
     if (!isDeepStrictEqual(safeContext.task_contract, contract)) {
       throw Object.assign(new Error("Handoff context does not match its task contract"), { code: "CONTRACT_MISMATCH" });
     }
+    const safeContract = safeContext.task_contract;
     enforceContextPolicy(provider, safeContext);
-    const createHandle = (mode: InvocationHandle["mode"], status: InvocationHandle["status"], executionId: string | null, instructions: string[] = []): InvocationHandle => {
+    await this.#authorizeDisclosure(provider, safeContract, safeContext);
+    const createHandle = (
+      mode: InvocationHandle["mode"],
+      status: InvocationHandle["status"],
+      executionId: string | null,
+      instructions: string[] = [],
+      invocationId = uuidV7(),
+    ): InvocationHandle => {
       const handle = {
-        invocation_id: randomUUID(), provider_id: provider.id, route_id: contract.route_id,
+        invocation_id: invocationId, provider_id: provider.id, route_id: safeContract.route_id,
         mode, status, execution_id: executionId, handoff_instructions: instructions,
       };
       this.#handles.set(handle.invocation_id, handle);
       return structuredClone(handle);
     };
+    const beginRuntime = async () => {
+      const invocationId = uuidV7();
+      const state: ProviderObservationState = {
+        provider: structuredClone(provider),
+        started_at_ms: this.#now().getTime(),
+        source_aliases: disclosureAliases(safeContext),
+        terminal_observed: false,
+      };
+      if (this.#lifecycleObserver) this.#observations.set(invocationId, state);
+      const identity = { invocation_id: invocationId, provider_id: provider.id, route_id: safeContract.route_id };
+      await this.#observe(identity, state, "invoked", null, null);
+      return { invocationId, state, identity };
+    };
+    const failedRuntime = async (runtime: Awaited<ReturnType<typeof beginRuntime>>) => {
+      await this.#observe(runtime.identity, runtime.state, "completed", "failed", "provider-invoke-failed");
+    };
+    const handoffRuntime = async (
+      runtime: Awaited<ReturnType<typeof beginRuntime>>,
+      mode: InvocationHandle["mode"],
+      instructions: string[],
+    ) => {
+      const handle = createHandle(mode, "handoff-required", null, instructions, runtime.invocationId);
+      await this.#observe(runtime.identity, runtime.state, "completed", "handoff-required", "handoff-required");
+      return handle;
+    };
 
     if (provider.invoke.kind === "manual") return createHandle("manual", "handoff-required", null, provider.invoke.instructions);
     if (provider.invoke.kind === "cli") {
       if (!this.#runtime.invokeCli) return createHandle("cli", "handoff-required", null, [`Run pragman ${provider.invoke.arguments.join(" ")}`]);
-      const result = await this.#runtime.invokeCli({ provider_id: provider.id, executable: provider.invoke.executable, arguments: provider.invoke.arguments, contract, context: safeContext });
-      return result.accepted && result.execution_id
-        ? createHandle("cli", "running", result.execution_id)
-        : createHandle("cli", "handoff-required", null, [`Run pragman ${provider.invoke.arguments.join(" ")}`]);
+      const observed = await beginRuntime();
+      try {
+        const result = await this.#runtime.invokeCli({ provider_id: provider.id, executable: provider.invoke.executable, arguments: provider.invoke.arguments, contract: safeContract, context: safeContext });
+        return result.accepted && result.execution_id
+          ? createHandle("cli", "running", result.execution_id, [], observed.invocationId)
+          : handoffRuntime(observed, "cli", [`Run pragman ${provider.invoke.arguments.join(" ")}`]);
+      } catch (error) {
+        await failedRuntime(observed);
+        throw error;
+      }
     }
+    let observed: Awaited<ReturnType<typeof beginRuntime>> | null = null;
     if (provider.invoke.kind === "native-skill" && this.#compatibility.native_skill_invocation && this.#runtime.invokeNative) {
-      const result = await this.#runtime.invokeNative({ provider_id: provider.id, skill_id: provider.invoke.skill_id, contract, context: safeContext });
-      if (result.accepted && result.execution_id) return createHandle("native-skill", "running", result.execution_id);
+      observed = await beginRuntime();
+      try {
+        const result = await this.#runtime.invokeNative({ provider_id: provider.id, skill_id: provider.invoke.skill_id, contract: safeContract, context: safeContext });
+        if (result.accepted && result.execution_id) return createHandle("native-skill", "running", result.execution_id, [], observed.invocationId);
+      } catch (error) {
+        await failedRuntime(observed);
+        throw error;
+      }
     }
     const prompt = provider.invoke.kind === "prompt-handoff"
       ? provider.invoke.prompt
-      : `Invoke ${provider.invoke.skill_id} for route_id ${contract.route_id} at router_depth ${contract.router_depth}. Return only the declared provider result contract.`;
+      : `Invoke ${provider.invoke.skill_id} for route_id ${safeContract.route_id} at router_depth ${safeContract.router_depth}. Return only the declared provider result contract.`;
     if (this.#compatibility.prompt_handoff && this.#runtime.handoffPrompt) {
-      const result = await this.#runtime.handoffPrompt({ provider_id: provider.id, prompt, contract, context: safeContext });
-      if (result.acknowledged && result.execution_id) return createHandle("prompt-handoff", "running", result.execution_id);
+      observed ??= await beginRuntime();
+      try {
+        const result = await this.#runtime.handoffPrompt({ provider_id: provider.id, prompt, contract: safeContract, context: safeContext });
+        if (result.acknowledged && result.execution_id) return createHandle("prompt-handoff", "running", result.execution_id, [], observed.invocationId);
+      } catch (error) {
+        await failedRuntime(observed);
+        throw error;
+      }
     }
-    return createHandle("prompt-handoff", "handoff-required", null, [prompt]);
+    return observed
+      ? handoffRuntime(observed, "prompt-handoff", [prompt])
+      : createHandle("prompt-handoff", "handoff-required", null, [prompt]);
   }
 
   async cancel(handle: InvocationHandle): Promise<CancellationResult> {
@@ -164,6 +404,8 @@ export class ConcreteHostAdapter implements HostAdapter {
     const result = await this.#runtime.cancel(current.execution_id);
     if (!result.cancelled) return { cancelled: false, reason: "HOST_REJECTED" };
     current.status = "cancelled";
+    const observation = this.#observations.get(current.invocation_id);
+    if (observation) await this.#observe(current, observation, "cancelled", "cancelled", "provider-cancelled");
     return { cancelled: true, reason: null };
   }
 
@@ -178,10 +420,28 @@ export class ConcreteHostAdapter implements HostAdapter {
     };
     if (current.status === "handoff-required" || !current.execution_id || !this.#runtime.collect) return handoffResult(current);
     try {
-      const result = normalizeRuntimeResult(current, await this.#runtime.collect(current.execution_id));
-      if (["succeeded", "failed", "cancelled"].includes(result.status)) current.status = result.status === "cancelled" ? "cancelled" : "completed";
+      const runtimeResult = await this.#runtime.collect(current.execution_id);
+      const result = normalizeRuntimeResult(current, runtimeResult);
+      if (["succeeded", "failed", "cancelled"].includes(runtimeResult.status)) {
+        current.status = runtimeResult.status === "cancelled" ? "cancelled" : "completed";
+        const observation = this.#observations.get(current.invocation_id);
+        if (observation) {
+          await this.#observe(
+            current,
+            observation,
+            runtimeResult.status === "cancelled" ? "cancelled" : "completed",
+            result.status,
+            runtimeResult.status === "succeeded"
+              ? result.status === "succeeded" ? "provider-succeeded" : "provider-unverified"
+              : runtimeResult.status === "failed" ? "provider-failed" : "provider-cancelled",
+          );
+        }
+      }
       return result;
     } catch {
+      current.status = "completed";
+      const observation = this.#observations.get(current.invocation_id);
+      if (observation) await this.#observe(current, observation, "completed", "failed", "collection-failed");
       return {
         status: "failed", provider_id: current.provider_id, route_id: current.route_id, summary: "Provider result collection failed.",
         artifacts: [], evidence: [], verification: [], error: { code: "COLLECTION_FAILED", retryable: true },

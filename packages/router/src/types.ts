@@ -95,7 +95,25 @@ export interface SequenceProvider extends RankedProvider { assignedCapabilities:
 export interface ProviderSequence { providers: SequenceProvider[]; truncated: boolean }
 
 export interface ApprovalRequirement { type: ApprovalType | "preview"; reason: string; required: boolean; hostNative?: boolean }
-export interface EgressApproval { destination: EgressDestination; sensitivity: Sensitivity; digest: string }
+/** Immutable, externally authenticated permission for one exact disclosure. */
+export interface EgressApproval {
+  schema_version: 1;
+  approval_id: string;
+  route_id: string;
+  provider_id: string;
+  approved_at: string;
+  expires_at: string;
+  destination: EgressDestination;
+  destination_id: string;
+  source_aliases: string[];
+  data_categories: string[];
+  disclosed_fields: string[];
+  effective_sensitivity: Sensitivity;
+  purpose: string;
+  retention: string;
+  further_calls_allowed: boolean;
+  content_digest: string;
+}
 
 export interface TaskContract {
   schema_version: 1;
