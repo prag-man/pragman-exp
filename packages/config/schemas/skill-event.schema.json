@@ -43,7 +43,7 @@
     "append_only": { "const": true }
   },
   "$defs": {
-    "secretFree": { "type": "string", "not": { "pattern": "(?:sk-(?:proj-)?|gh[pousr]_|AKIA|xox[baprs]-|AIza)" } },
+    "secretFree": { "type": "string", "not": { "pattern": "(?:sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,})" } },
     "slug": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }] },
     "namespacedId": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" }] },
     "providerId": { "allOf": [{ "$ref": "#/$defs/secretFree" }, { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$" }] },
