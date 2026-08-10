@@ -20,6 +20,7 @@ import type {
   SkillScore,
   ValidationResult,
 } from "./types.ts";
+import type { DurableRecordType } from "./paths.ts";
 
 const ajv = new Ajv2020({
   allErrors: true,
@@ -182,6 +183,16 @@ function scoreIsInDomain(score: SkillScore, metric: SkillMetric): boolean {
   }
   return typeof score.value === "string"
     && (metric.categories ?? []).some((category) => category.id === score.value);
+}
+
+export function validateDurableRecordSchema(
+  recordType: DurableRecordType,
+  value: unknown,
+): ValidationResult<SkillEvent | SkillScore | EvalCandidate | EvalCandidateApproval> {
+  if (recordType === "skill-events") return eventResult(value);
+  if (recordType === "scores") return schemaResult(validateScore, value);
+  if (recordType === "eval-candidates") return schemaResult(validateCandidate, value);
+  return schemaResult(validateApproval, value);
 }
 
 function rollupResult(value: unknown): ValidationResult<SkillRollup> {
