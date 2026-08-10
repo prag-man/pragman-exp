@@ -26,7 +26,7 @@
     "allowed_side_effects": { "type": "array", "uniqueItems": true, "default": [], "items": { "$ref": "#/$defs/sideEffect" } },
     "data_inputs": { "type": "array", "default": [], "items": { "$ref": "#/$defs/dataInput" } },
     "effective_sensitivity": { "$ref": "#/$defs/sensitivity" },
-    "egress_approvals": { "type": "array", "default": [], "items": { "$ref": "#/$defs/egressApproval" } },
+    "egress_approvals": { "type": "array", "maxItems": 32, "default": [], "items": { "$ref": "#/$defs/egressApproval" } },
     "proof": { "$ref": "#/$defs/stringArray", "default": [] },
     "stop_conditions": { "$ref": "#/$defs/stringArray", "default": [] },
     "created_at": { "type": "string", "format": "date-time", "pattern": "Z$" }
@@ -53,23 +53,24 @@
     },
     "egressApproval": {
       "type": "object", "additionalProperties": false,
-      "required": ["destination", "destination_id", "source_aliases", "data_categories", "effective_sensitivity", "disclosed_fields", "purpose", "retention", "further_calls_allowed", "content_digest", "approved", "expires_at"],
+      "required": ["schema_version", "approval_id", "route_id", "provider_id", "approved_at", "expires_at", "destination", "destination_id", "source_aliases", "data_categories", "effective_sensitivity", "disclosed_fields", "purpose", "retention", "further_calls_allowed", "content_digest"],
       "properties": {
+        "schema_version": { "const": 1 },
+        "approval_id": { "$ref": "#/$defs/uuidv7" },
+        "route_id": { "$ref": "#/$defs/uuidv7" },
+        "provider_id": { "$ref": "#/$defs/providerId" },
+        "approved_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "expires_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
         "destination": { "enum": ["host-model", "mcp-connector", "research-provider", "external-skill", "local-process", "external-api"] },
         "destination_id": { "$ref": "#/$defs/destinationIdentity" },
-        "provider": { "$ref": "#/$defs/destinationIdentity" },
-        "model": { "$ref": "#/$defs/destinationIdentity" },
-        "service": { "$ref": "#/$defs/destinationIdentity" },
-        "source_aliases": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
-        "data_categories": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+        "source_aliases": { "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+        "data_categories": { "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
         "effective_sensitivity": { "$ref": "#/$defs/sensitivity" },
-        "disclosed_fields": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+        "disclosed_fields": { "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
         "purpose": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" },
         "retention": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" },
         "further_calls_allowed": { "type": "boolean" },
-        "content_digest": { "$ref": "#/$defs/sha256" },
-        "approved": { "type": "boolean" },
-        "expires_at": { "type": "string", "format": "date-time", "pattern": "Z$" }
+        "content_digest": { "$ref": "#/$defs/sha256" }
       }
     },
     "destinationIdentity": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+-]*$" }

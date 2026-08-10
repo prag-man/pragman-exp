@@ -198,10 +198,14 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
   assert.equal(validateContract({ ...contract, raw_private_path: "/Users/example/private" }), false);
 
   const egressApproval = {
+    schema_version: 1,
+    approval_id: "018f5b8c-7f2d-7a51-a9c0-1d4cb73b10ac",
+    route_id: contract.route_id,
+    provider_id: "pragman:builtin-review",
+    approved_at: "2026-08-10T12:00:00Z",
+    expires_at: "2026-08-10T13:00:00Z",
     destination: "host-model",
-    destination_id: "openai:gpt-5",
-    provider: "openai",
-    model: "gpt-5",
+    destination_id: "codex",
     source_aliases: ["workspace-primary"],
     data_categories: ["customer-summary"],
     effective_sensitivity: "confidential",
@@ -210,11 +214,16 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
     retention: "provider-declared-30-days",
     further_calls_allowed: false,
     content_digest: "b".repeat(64),
-    approved: true,
-    expires_at: "2026-08-10T13:00:00Z",
   };
   assert.equal(validateContract({ ...contract, egress_approvals: [egressApproval] }), true, JSON.stringify(validateContract.errors));
   for (const requiredField of [
+    "schema_version",
+    "approval_id",
+    "route_id",
+    "provider_id",
+    "approved_at",
+    "expires_at",
+    "destination",
     "destination_id",
     "source_aliases",
     "data_categories",
@@ -224,8 +233,6 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
     "retention",
     "further_calls_allowed",
     "content_digest",
-    "approved",
-    "expires_at",
   ]) {
     const incomplete = { ...egressApproval } as Record<string, unknown>;
     delete incomplete[requiredField];
@@ -235,6 +242,10 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
     ...contract,
     egress_approvals: [{ ...egressApproval, raw_content: "must never be disclosed implicitly" }],
   }), false);
+  assert.equal(validateContract({
+    ...contract,
+    egress_approvals: [{ ...egressApproval, approved: true }],
+  }), false, "self-attested approval must not be accepted");
 
   const validateSession = ajv.compile(schemas["session-event.schema.json"]);
   const sessionEvent = {
