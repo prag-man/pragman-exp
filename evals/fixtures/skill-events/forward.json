@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "evaluation_mode": "skill-eval",
+  "arm": "skill-on",
+  "skill_type": "capability",
+  "eval_id": "review-release-v1",
+  "eval_corpus_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "trial_policy_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "skill_id": "pragman:review",
+  "skill_version": "1.2.3",
+  "skill_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "provider": "pragman:builtin-review",
+  "provider_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "environment_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "host": "codex",
+  "host_version": "1.0.0",
+  "model": "gpt-5",
+  "model_version": "2026-08-01",
+  "harness_version": "1.0.0",
+  "metric_id": "task-success",
+  "metric_definition_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "grader_id": "deterministic-task-check",
+  "grader_version": "1.0.0",
+  "grader_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+  "grader_type": "deterministic",
+  "rubric_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+  "cases": [
+    {
+      "case_id": "positive-route",
+      "trials": [
+        { "trial_id": "trial-1", "passed": true, "verified_success": true, "metric_value": true, "utility": 1, "duration_ms": 10, "retries": 0, "rework_cycles": 0, "tool_calls": 1 },
+        { "trial_id": "trial-2", "passed": true, "verified_success": true, "metric_value": true, "utility": 1, "duration_ms": 10, "retries": 0, "rework_cycles": 0, "tool_calls": 1 },
+        { "trial_id": "trial-3", "passed": true, "verified_success": true, "metric_value": true, "utility": 1, "duration_ms": 10, "retries": 0, "rework_cycles": 0, "tool_calls": 1 }
+      ]
+    },
+    {
+      "case_id": "pressure-route",
+      "trials": [
+        { "trial_id": "trial-1", "passed": true, "verified_success": true, "metric_value": true, "utility": 1, "duration_ms": 14, "retries": 0, "rework_cycles": 0, "tool_calls": 1 },
+        { "trial_id": "trial-2", "passed": false, "verified_success": false, "metric_value": false, "utility": 0, "duration_ms": 14, "retries": 0, "rework_cycles": 0, "tool_calls": 1 },
+        { "trial_id": "trial-3", "passed": false, "verified_success": false, "metric_value": false, "utility": 0, "duration_ms": 14, "retries": 0, "rework_cycles": 0, "tool_calls": 1 }
+      ]
+    }
+  ]
+}
