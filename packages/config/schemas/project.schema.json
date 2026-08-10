@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/project.schema.json",
+  "title": "Pragman project manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "project_id", "workspace", "root"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "project_id": { "$ref": "#/$defs/slug" },
+    "workspace": { "$ref": "#/$defs/slug" },
+    "root": { "type": "string", "pattern": "^/", "minLength": 2 },
+    "product": { "type": "string", "minLength": 1 },
+    "additional_workspaces": {
+      "type": "array",
+      "default": [],
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/slug" }
+    },
+    "context_index": { "type": "string", "default": ".pragman/context-index.yaml", "minLength": 1 }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
+  }
+}

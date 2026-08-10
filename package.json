@@ -1,0 +1,27 @@
+{
+  "name": "@prag-man/pragman-exp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "bin": {
+    "pragman": "packages/cli/src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "tsx --test tests/**/*.test.ts",
+    "evals": "node scripts/run-evals.mjs"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/routing.schema.json",
+  "title": "Pragman routing configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "defaults", "rules"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lane": { "enum": ["adaptive", "fast", "standard", "deep", "operational"], "default": "adaptive" },
+        "providers": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true, "default": [] },
+        "require_approval": { "$ref": "#/$defs/approval", "default": null }
+      }
+    },
+    "rules": { "type": "array", "items": { "$ref": "#/$defs/rule" } },
+    "capability_aliases": {
+      "type": "object",
+      "default": {},
+      "propertyNames": { "$ref": "#/$defs/slug" },
+      "additionalProperties": { "$ref": "#/$defs/slug" }
+    }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "approval": { "type": ["string", "null"], "enum": ["route", "egress", "action", "target-specific", null] },
+    "idArray": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
+    "condition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "op", "value"],
+          "properties": {
+            "field": { "enum": ["task_family", "deliverable_kind", "execution_mode", "urgency", "estimated_sessions", "downstream_impact", "reversibility", "effective_sensitivity"] },
+            "op": { "enum": ["eq", "in"] },
+            "value": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "op", "value"],
+          "properties": {
+            "field": { "enum": ["declared_side_effects", "requested_capabilities", "scope_systems", "egress_destinations", "data_categories"] },
+            "op": { "enum": ["contains", "intersects", "contains_all"] },
+            "value": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "op", "value"],
+          "properties": {
+            "field": { "enum": ["uncertainty_max_impact", "independent_system_count"] },
+            "op": { "enum": ["eq", "gte", "lte"] },
+            "value": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "op"],
+          "properties": {
+            "field": { "enum": ["workspace", "project"] },
+            "op": { "enum": ["eq", "is_null"] },
+            "value": { "type": ["string", "null"] }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "op": { "const": "eq" } }, "required": ["op"] },
+              "then": { "required": ["value"] }
+            }
+          ]
+        }
+      ]
+    },
+    "expressionLevel3": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["all"], "properties": { "all": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "$ref": "#/$defs/condition" } } } },
+        { "type": "object", "additionalProperties": false, "required": ["any"], "properties": { "any": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "$ref": "#/$defs/condition" } } } },
+        { "type": "object", "additionalProperties": false, "required": ["not"], "properties": { "not": { "$ref": "#/$defs/condition" } } }
+      ]
+    },
+    "expressionLevel2": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["all"], "properties": { "all": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "oneOf": [{ "$ref": "#/$defs/condition" }, { "$ref": "#/$defs/expressionLevel3" }] } } } },
+        { "type": "object", "additionalProperties": false, "required": ["any"], "properties": { "any": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "oneOf": [{ "$ref": "#/$defs/condition" }, { "$ref": "#/$defs/expressionLevel3" }] } } } },
+        { "type": "object", "additionalProperties": false, "required": ["not"], "properties": { "not": { "oneOf": [{ "$ref": "#/$defs/condition" }, { "$ref": "#/$defs/expressionLevel3" }] } } }
+      ]
+    },
+    "expression": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["all"], "properties": { "all": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "oneOf": [{ "$ref": "#/$defs/condition" }, { "$ref": "#/$defs/expressionLevel2" }] } } } },
+        { "type": "object", "additionalProperties": false, "required": ["any"], "properties": { "any": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "oneOf": [{ "$ref": "#/$defs/condition" }, { "$ref": "#/$defs/expressionLevel2" }] } } } },
+        { "type": "object", "additionalProperties": false, "required": ["not"], "properties": { "not": { "oneOf": [{ "$ref": "#/$defs/condition" }, { "$ref": "#/$defs/expressionLevel2" }] } } }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "require_capabilities": { "$ref": "#/$defs/idArray", "$comment": "merge: ordered-set" },
+        "prefer": { "$ref": "#/$defs/idArray", "$comment": "merge: ordered-set" },
+        "avoid": { "$ref": "#/$defs/idArray", "$comment": "merge: ordered-set" },
+        "minimum_lane": { "enum": ["fast", "standard", "deep", "operational"] },
+        "require_approval": { "$ref": "#/$defs/approval" }
+      },
+      "minProperties": 1
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "when", "action"],
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "when": { "$ref": "#/$defs/expression" },
+        "action": { "$ref": "#/$defs/action" },
+        "priority": { "type": "integer", "default": 0 }
+      }
+    }
+  }
+}

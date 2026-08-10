@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/learning.schema.json",
+  "title": "Pragman approved learning",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "learning_id", "evidence_refs", "target", "change_id", "approved_at", "status"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "learning_id": { "$ref": "#/$defs/uuidv7" },
+    "evidence_refs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "target": { "enum": ["personal", "workspace", "project"] },
+    "change_id": { "$ref": "#/$defs/uuidv7" },
+    "approved_at": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["approved", "applied", "rolled-back", "expired"] },
+    "review_after": { "type": "string", "format": "date-time" },
+    "outcome": { "enum": ["succeeded", "partial", "failed", "rolled-back"] },
+    "rollback_reason": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "uuidv7": { "type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
+  }
+}

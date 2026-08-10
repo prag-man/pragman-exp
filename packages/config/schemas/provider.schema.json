@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pragman.dev/schemas/provider.schema.json",
+  "title": "Pragman provider",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "source", "source_version", "trust", "capabilities", "host_support", "invoke", "context_policy", "side_effects", "workflow_weight", "result_contract"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "$ref": "#/$defs/slug" },
+    "source": { "enum": ["bundled", "curated", "workspace", "discovered"] },
+    "source_version": { "type": "string", "minLength": 1 },
+    "trust": { "enum": ["bundled", "curated", "workspace-approved", "discovered", "quarantined"] },
+    "capabilities": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+    "host_support": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+    "invoke": { "$ref": "#/$defs/invoke" },
+    "context_policy": { "$ref": "#/$defs/contextPolicy" },
+    "side_effects": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/sideEffect" } },
+    "workflow_weight": { "enum": ["light", "standard", "heavy"] },
+    "result_contract": { "$ref": "#/$defs/slug" },
+    "requires": { "type": "array", "default": [], "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+    "strengths": { "type": "array", "default": [], "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "best_for": { "type": "array", "default": [], "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "avoid_when": { "type": "array", "default": [], "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "compatibility": { "type": "object", "default": {}, "propertyNames": { "$ref": "#/$defs/slug" }, "additionalProperties": { "type": "string", "minLength": 1 } },
+    "evaluation_confidence": { "type": "integer", "minimum": 0, "maximum": 20, "default": 0 }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "sensitivity": { "enum": ["public", "internal", "confidential", "restricted"] },
+    "sideEffect": {
+      "enum": ["project-file-write", "workspace-file-write", "credential-use", "destructive-action", "paid-external-action", "production-data-write", "external-message", "issue-write", "pull-request-write", "purchase", "external-account-mutation", "deployment", "live-data-write"]
+    },
+    "egressDestination": { "enum": ["host-model", "mcp-connector", "research-provider", "external-skill", "local-process", "external-api"] },
+    "invoke": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "skill_id"],
+          "properties": { "type": { "const": "native-skill" }, "skill_id": { "$ref": "#/$defs/slug" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "template_id"],
+          "properties": { "type": { "const": "prompt-handoff" }, "template_id": { "$ref": "#/$defs/slug" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "executable", "arguments"],
+          "properties": {
+            "type": { "const": "cli" },
+            "executable": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+            "arguments": { "type": "array", "items": { "type": "string", "pattern": "^(?:[A-Za-z0-9._-]+|\\{[a-z_]+\\})$" } }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "instructions"],
+          "properties": { "type": { "const": "manual" }, "instructions": { "type": "string", "minLength": 1 } }
+        }
+      ]
+    },
+    "contextPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted_context_classes", "maximum_sensitivity", "accepts_redacted_excerpts"],
+      "properties": {
+        "accepted_context_classes": {
+          "type": "array", "uniqueItems": true,
+          "items": { "enum": ["task-contract", "public-summary", "internal-summary", "redacted-excerpt", "structured-data"] }
+        },
+        "maximum_sensitivity": { "$ref": "#/$defs/sensitivity" },
+        "accepts_redacted_excerpts": { "type": "boolean" }
+      }
+    }
+  }
+}
