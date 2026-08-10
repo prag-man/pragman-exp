@@ -27,6 +27,13 @@ Use this sequence:
 5. Apply atomically and append reversible history.
 6. Review measured outcomes; keep or roll back.
 
-An approved eval-candidate is eligible input to step 1 only. Verify the approved candidate and artifact digests. Pending, rejected, missing, or drifted records never enter a change preview.
+The deterministic CLI bridge is content-free and approval-bound:
+
+1. `pragman sessions analyze --file ANALYSIS.json --state-root <events>` previews an optional `candidate` proposal only after the focused context questions are answered and the session evidence is not report-only. Repeat it with `--apply <candidate_creation.preview_digest>` to append the pending candidate; this does not approve it or tune anything.
+2. Review with `pragman events candidates list`, then record the separate decision with `pragman events candidates decide`.
+3. Run candidate-bound evidence with `pragman eval run`, then use `pragman tune` to preview and separately apply the verified private overlay. A current, journal-verified overlay contributes a personal routing preference only while the installed skill digest still matches the evaluated digest.
+4. Use the returned tune `change_id` with `pragman changes rollback --change <id>`. Preview first, then repeat with `--apply <preview_digest>`; rollback restores the exact snapshot referenced by the tune journal. `pragman changes list` exposes tune history under `tune_changes`.
+
+An approved eval-candidate is eligible input to the tuning preview only. Verify the approved candidate and artifact digests. Pending, rejected, missing, or drifted records never enter a tune preview.
 
 Prepare reusable public learning separately. Sanitize company names, paths, prompts, source code, credentials, customer data, and session excerpts; require a distinct review and publication authorization.

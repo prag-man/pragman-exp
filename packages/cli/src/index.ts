@@ -70,7 +70,7 @@ const COMMAND_USAGE: Record<string, string> = {
   "providers prefer": "pragman providers prefer --provider ID[,ID...] [--config DIR] [--apply DIGEST]",
   "providers trust": "pragman providers trust --provider ID --acknowledge-trust [--config DIR] [--apply DIGEST]",
   "sessions scan": "pragman sessions scan --file SELECTION.json [--state-root DIR]",
-  "sessions analyze": "pragman sessions analyze --file SELECTION.json [--state-root DIR]",
+  "sessions analyze": "pragman sessions analyze --file ANALYSIS.json [--state-root DIR] [--apply DIGEST]",
   "sessions purge": "pragman sessions purge [--from DATE] [--through DATE] [--class CLASS] [--state-root DIR] [--apply DIGEST]",
   "changes list": "pragman changes list [--config DIR]",
   "changes preview": "pragman changes preview [--file CHANGE.json] [--config DIR]",
