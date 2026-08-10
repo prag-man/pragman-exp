@@ -21,6 +21,10 @@ Build a reviewable operating map from bounded evidence, then change only what th
 6. Stop on broken or conflicting state and request the specific repair choice. Otherwise apply only the unchanged approved digest, which binds every proposed config/profile operation into one transaction. A preview is not a write.
 7. Run `pragman doctor --json` after apply. Exercise the returned read-only sample route. A manual handoff is `handoff-required`; never report provider execution or routing success without an available router/provider result.
 
+## Output
+
+Lead with the environment class and current phase: `discovered`, `previewed`, `applied`, `verified`, or `handoff-required`. Name the discovery boundary: only fixed Codex, Claude Code, and Cursor skill-metadata roots plus an explicitly selected repository—never a broad home-directory scan. Report setup as verified only after a compatible CLI returns doctor evidence and the read-only sample-route result. If a required CLI, router, or provider is unavailable, or repair remains blocked, label the next step `handoff-required`, give the manual action, and stop without implying it executed.
+
 ## CLI unavailable
 
 Disclose that host/skill scanning, schema validation, digest binding, atomic writes, health checks, and deterministic route evidence are unavailable. Conduct a guided interview and draft a content-free operating map for review, but do not write or claim a scan, validation, repair, or successful route. Offer `npm install --global @prag-man/pragman-exp`; never install automatically.
