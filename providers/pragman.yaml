@@ -1,0 +1,54 @@
+schema_version: 1
+providers:
+  - &pragman
+    schema_version: 1
+    id: pragman:router
+    source: prag-man/pragman-exp
+    source_version: 0.1.0
+    trust: bundled
+    capabilities: [route-work]
+    host_support: [codex, claude-code, cursor]
+    invoke: { kind: native-skill, skill_id: pragman:router }
+    context_policy: &context
+      accepted_classes: [task-contract, context-summary, redacted-excerpt]
+      maximum_sensitivity: restricted
+      accepts_redacted_excerpts: true
+    side_effects: []
+    workflow_weight: light
+    result_contract: provider-result-v1
+    requires: [skill:pragman:router]
+    strengths: [deterministic-routing, explicit-fallback]
+    best_for: [provider-selection]
+    avoid_when: [explicit-provider-already-selected]
+    compatibility:
+      source_version: ">=0.1.0 <1.0.0"
+      hosts: { codex: ">=1.0.0 <2.0.0", claude-code: ">=1.0.0 <2.0.0", cursor: ">=0.40.0 <1.0.0" }
+    evaluation_confidence: 1
+  - <<: *pragman
+    id: pragman:research
+    capabilities: [research-evidence]
+    invoke: { kind: native-skill, skill_id: pragman:research }
+    side_effects: [remote-egress]
+    workflow_weight: standard
+    requires: [skill:pragman:research]
+    strengths: [source-attribution, privacy-disclosure]
+    best_for: [decision-research]
+    avoid_when: [no-research-needed]
+  - <<: *pragman
+    id: pragman:shape
+    capabilities: [shape-task]
+    invoke: { kind: native-skill, skill_id: pragman:shape }
+    requires: [skill:pragman:shape]
+    strengths: [smallest-test, kill-criteria]
+    best_for: [ambiguous-product-work]
+    avoid_when: [fully-specified-task]
+  - <<: *pragman
+    id: pragman:analyze
+    capabilities: [analyze-work-history]
+    invoke: { kind: native-skill, skill_id: pragman:analyze }
+    side_effects: [read-files]
+    workflow_weight: standard
+    requires: [skill:pragman:analyze]
+    strengths: [evidence-grounded-improvement]
+    best_for: [retrospective-analysis]
+    avoid_when: [no-retained-evidence]

@@ -1,0 +1,54 @@
+schema_version: 1
+providers:
+  - &superpowers
+    schema_version: 1
+    id: superpowers:brainstorming
+    source: obra/superpowers
+    source_version: 1.0.0
+    trust: curated
+    capabilities: [brainstorm-solution]
+    host_support: [codex, claude-code, cursor]
+    invoke: { kind: native-skill, skill_id: superpowers:brainstorming }
+    context_policy: &context
+      accepted_classes: [task-contract, context-summary, redacted-excerpt]
+      maximum_sensitivity: confidential
+      accepts_redacted_excerpts: true
+    side_effects: []
+    workflow_weight: standard
+    result_contract: provider-result-v1
+    requires: [skill:superpowers:brainstorming]
+    strengths: [requirements-exploration]
+    best_for: [creative-design-work]
+    avoid_when: [mechanical-task]
+    compatibility:
+      source_version: ">=1.0.0 <2.0.0"
+      hosts: { codex: ">=1.0.0 <2.0.0", claude-code: ">=1.0.0 <2.0.0", cursor: ">=0.40.0 <1.0.0" }
+    evaluation_confidence: 0.8
+  - <<: *superpowers
+    id: superpowers:systematic-debugging
+    capabilities: [diagnose-software-failure]
+    invoke: { kind: native-skill, skill_id: superpowers:systematic-debugging }
+    side_effects: [read-files, run-commands]
+    requires: [skill:superpowers:systematic-debugging]
+    strengths: [hypothesis-driven-debugging]
+    best_for: [test-failure]
+    avoid_when: [no-failure]
+  - <<: *superpowers
+    id: superpowers:test-driven-development
+    capabilities: [test-driven-implementation]
+    invoke: { kind: native-skill, skill_id: superpowers:test-driven-development }
+    side_effects: [read-files, run-commands, project-file-write]
+    workflow_weight: heavy
+    requires: [skill:superpowers:test-driven-development]
+    strengths: [red-green-refactor]
+    best_for: [behavior-change]
+    avoid_when: [throwaway-prototype]
+  - <<: *superpowers
+    id: superpowers:verification-before-completion
+    capabilities: [verify-change]
+    invoke: { kind: native-skill, skill_id: superpowers:verification-before-completion }
+    side_effects: [read-files, run-commands]
+    requires: [skill:superpowers:verification-before-completion]
+    strengths: [evidence-before-claims]
+    best_for: [completion-gate]
+    avoid_when: [no-completion-claim]
