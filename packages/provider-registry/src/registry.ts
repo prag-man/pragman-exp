@@ -180,9 +180,11 @@ function scopeRank(scope: ProviderDiscovery["install_scope"]): number {
 
 export class ProviderRegistryValidationError extends Error {
   readonly code = "PROVIDER_REGISTRY_INVALID";
+  readonly issues: ProviderRegistryIssue[];
 
-  constructor(readonly issues: ProviderRegistryIssue[]) {
+  constructor(issues: ProviderRegistryIssue[]) {
     super(`Provider registry is invalid: ${issues.map((entry) => `${entry.code} at ${entry.path}`).join(", ")}`);
+    this.issues = issues;
   }
 }
 

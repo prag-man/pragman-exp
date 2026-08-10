@@ -8,6 +8,8 @@ import { executeWorkspaceCommand } from "./commands/workspace.ts";
 import { executeInitCommand } from "./commands/init.ts";
 import { executeScanCommand } from "./commands/scan.ts";
 import { executeDoctorCommand } from "./commands/doctor.ts";
+import { executeProvidersCommand } from "./commands/providers.ts";
+import { executeRouteCommand } from "./commands/route.ts";
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -109,8 +111,12 @@ export async function runCli(
         ? await executeInitCommand(arguments_, io)
         : arguments_.command === "scan"
           ? await executeScanCommand(arguments_)
-          : arguments_.command === "doctor"
+      : arguments_.command === "doctor"
             ? await executeDoctorCommand(arguments_)
+            : arguments_.command.startsWith("providers.")
+              ? await executeProvidersCommand(arguments_)
+              : arguments_.command === "route"
+                ? await executeRouteCommand(arguments_, io)
             : await executeEvalCommand(arguments_, io);
   render(result, arguments_.json);
   return result.exitCode;
