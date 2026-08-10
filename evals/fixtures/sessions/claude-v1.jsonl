@@ -1,0 +1,3 @@
+{"type":"user","sessionId":"fixture-session","uuid":"fixture-user","timestamp":"2026-08-11T09:00:00.000Z","message":{"role":"user","content":"Investigate the fixture retry."}}
+{"type":"assistant","sessionId":"fixture-session","uuid":"fixture-assistant","timestamp":"2026-08-11T09:00:01.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"fixture-tool","name":"Read","input":{}}]}}
+{"type":"tool_result","sessionId":"fixture-session","uuid":"fixture-result","timestamp":"2026-08-11T09:00:02.000Z","toolUseResult":{"status":"error"}}
