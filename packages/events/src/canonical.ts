@@ -24,10 +24,8 @@ function serialize(value: unknown, ancestors: Set<object>): string {
       const descriptors = keys.map((key) => Object.getOwnPropertyDescriptor(value, key));
       if (descriptors.some((descriptor) => !descriptor
         || !("value" in descriptor)
-        || descriptor.enumerable !== true
-        || descriptor.writable !== true
-        || descriptor.configurable !== true)) {
-        throw new TypeError("Canonical JSON arrays require ordinary data properties");
+        || descriptor.enumerable !== true)) {
+        throw new TypeError("Canonical JSON arrays require enumerable data properties");
       }
       return `[${descriptors.map((descriptor) => serialize(descriptor!.value, ancestors)).join(",")}]`;
     }
