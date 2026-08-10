@@ -1,24 +1,9 @@
 {
-  "schema_version": 1,
-  "skill_id": "pragman-init",
-  "evaluation_kind": "behavioral",
-  "arm": "skill-on",
-  "privacy": "sanitized",
-  "scenarios": [
-    {
-      "scenario_id": "clean-environment",
-      "passed": true,
-      "invariants": ["At most three route-changing questions", "Content-free preview before write", "Apply bound to unchanged digest", "Doctor and honest manual sample route"]
-    },
-    {
-      "scenario_id": "populated-environment",
-      "passed": true,
-      "invariants": ["Discovered answers are not re-asked", "Healthy config is preserved", "Known metadata roots only", "No raw paths or source bodies"]
-    },
-    {
-      "scenario_id": "broken-shadowed-environment",
-      "passed": true,
-      "invariants": ["Malformed metadata is degraded", "Different digests block writes", "No secret-store read or discovered-content execution", "Manual handoff is not reported as execution"]
-    }
+  "schema_version": 1,"skill_id":"pragman-init","evaluation_kind":"behavioral","arm":"skill-on","privacy":"sanitized","observation_source":"curated-structured-observation",
+  "scenarios":[
+    {"scenario_id":"clean-environment","observation":{"triggered":true,"checks":{"questions_bounded":true,"preview_before_write":true,"doctor_evidence_required":true}}},
+    {"scenario_id":"populated-environment","observation":{"triggered":true,"checks":{"discovered_answers_not_reasked":true,"known_metadata_roots_only":true,"healthy_config_preserved":true}}},
+    {"scenario_id":"broken-shadowed-environment","observation":{"triggered":true,"checks":{"malformed_metadata_degraded":true,"digest_conflict_blocks_write":true,"manual_handoff_not_execution":true}}},
+    {"scenario_id":"explanation-only-control","observation":{"triggered":false,"checks":{"no_environment_scan":true}}}
   ]
 }

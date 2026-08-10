@@ -81,6 +81,8 @@ test("pragman-init package carries portable degradation and paired behavioral ev
   assert.match(metadata, /\$pragman-init/);
   assert.equal(baseline.scenarios.length >= 3, true);
   assert.deepEqual(forward.scenarios.map((entry: { scenario_id: string }) => entry.scenario_id), baseline.scenarios.map((entry: { scenario_id: string }) => entry.scenario_id));
-  assert.equal(forward.scenarios.every((entry: { passed: boolean }) => entry.passed), true);
+  assert.equal(baseline.scenarios.some((entry: { case_type: string }) => entry.case_type === "non-trigger"), true);
+  assert.equal(forward.scenarios.every((entry: { observation: { triggered: boolean } }) => typeof entry.observation.triggered === "boolean"), true);
+  assert.equal(JSON.stringify(forward).includes('"passed"'), false);
   assert.equal([skill, compatibility, metadata, discovery, JSON.stringify(baseline), JSON.stringify(forward)].join("\n").includes("/Users/"), false);
 });

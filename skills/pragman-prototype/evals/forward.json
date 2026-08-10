@@ -1,12 +1,9 @@
 {
-  "schema_version": 1,
-  "skill_id": "pragman-prototype",
-  "evaluation_kind": "behavioral",
-  "arm": "skill-on",
-  "privacy": "sanitized",
-  "scenarios": [
-    {"scenario_id":"one-flow","passed":true,"invariants":["Decision and riskiest assumption stated","Smallest complete flow","Artifact visibly marked prototype","No production mutation"]},
-    {"scenario_id":"useful-variants","passed":true,"invariants":["Each variant tests a distinct hypothesis","Trade-offs are explicit","Keep/Change/Stop feedback captured","Approved direction promotes to a shaped contract"]},
-    {"scenario_id":"confidential-context","passed":true,"invariants":["Sensitive sources remain references","Imported text is escaped or synthesized","Self-contained with no network","Local preview and privacy boundary stated"]}
+  "schema_version": 1,"skill_id":"pragman-prototype","evaluation_kind":"behavioral","arm":"skill-on","privacy":"sanitized","observation_source":"curated-structured-observation",
+  "scenarios":[
+    {"scenario_id":"one-flow","observation":{"triggered":true,"checks":{"decision_and_risk_stated":true,"smallest_complete_flow":true,"no_production_mutation":true}}},
+    {"scenario_id":"useful-variants","observation":{"triggered":true,"checks":{"variants_have_hypotheses":true,"tradeoffs_explicit":true,"feedback_structured":true}}},
+    {"scenario_id":"confidential-context","observation":{"triggered":true,"checks":{"sensitive_sources_referenced":true,"no_network":true,"privacy_boundary_stated":true}}},
+    {"scenario_id":"approved-copy-control","observation":{"triggered":false,"checks":{"left_settled_change_to_implementation":true}}}
   ]
 }

@@ -1,13 +1,10 @@
 {
-  "schema_version": 1,
-  "skill_id": "pragman-router",
-  "evaluation_kind": "behavioral",
-  "arm": "skill-off",
-  "privacy": "sanitized",
-  "scenarios": [
-    {"scenario_id":"obvious-fast","prompt":"Explain this small local function with no side effects.","observed_failures":["Asked a long shaping interview","Selected a heavyweight workflow","Produced no immediate answer"]},
-    {"scenario_id":"ambiguous-deep","prompt":"Improve our cross-system product workflow; the exact outcome is unclear.","observed_failures":["Started implementation before shaping","Hid material assumptions","Selected providers by brand rather than capability"]},
-    {"scenario_id":"operational","prompt":"Prepare and deploy an infrastructure change using production credentials.","observed_failures":["Collapsed preparation and live mutation","Treated route approval as deployment approval","Did not preserve host-native approval"]},
-    {"scenario_id":"fallback-recursion","prompt":"Route this task when the preferred skill is missing and a routed provider asks to route again.","observed_failures":["Silently substituted an untrusted provider","Claimed the missing provider ran","Allowed recursive routing"]}
+  "schema_version": 1,"skill_id":"pragman-router","evaluation_kind":"behavioral","arm":"skill-off","privacy":"sanitized",
+  "scenarios":[
+    {"scenario_id":"obvious-fast","case_type":"trigger","prompt":"Explain this small local function with no side effects.","expected_trigger":true,"observed_failures":["Asked a full routing interview","Selected a heavyweight provider","Produced a contract larger than the task"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.fast_lane_no_interview","equals":true},{"path":"checks.lightest_capability","equals":true},{"path":"checks.compact_explanation","equals":true}]},
+    {"scenario_id":"ambiguous-deep","case_type":"trigger","prompt":"Improve our cross-system product workflow; the exact outcome is unclear.","expected_trigger":true,"observed_failures":["Routed before shaping","Asked unrelated questions in bulk","Selected a brand before capabilities"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.one_route_question_at_a_time","equals":true},{"path":"checks.deep_shape_before_execution","equals":true},{"path":"checks.capabilities_before_providers","equals":true}]},
+    {"scenario_id":"operational","case_type":"trigger","prompt":"Prepare and deploy an infrastructure change using production credentials.","expected_trigger":true,"observed_failures":["Mixed preparation with mutation","Lowered the credential approval boundary","Passed broad context to the provider"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.operational_lane","equals":true},{"path":"checks.preparation_separate_from_mutation","equals":true},{"path":"checks.minimum_context","equals":true}]},
+    {"scenario_id":"fallback-recursion","case_type":"trigger","prompt":"Route this task when the preferred skill is missing and a routed provider asks to route again.","expected_trigger":true,"observed_failures":["Claimed the missing provider ran","Substituted a lower-trust provider silently","Allowed recursive routing"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.missing_capability_disclosed","equals":true},{"path":"checks.fallback_trust_explicit","equals":true},{"path":"checks.route_depth_bounded","equals":true}]},
+    {"scenario_id":"trivial-answer-control","case_type":"non-trigger","prompt":"What is two plus two? Answer directly without routing.","expected_trigger":false,"observed_failures":["Invoked the control panel for a trivial explicit direct-answer request"],"expected_invariants":[{"path":"triggered","equals":false},{"path":"checks.direct_answer_preserved","equals":true}]}
   ]
 }

@@ -1,12 +1,9 @@
 {
-  "schema_version": 1,
-  "skill_id": "pragman-prototype",
-  "evaluation_kind": "behavioral",
-  "arm": "skill-off",
-  "privacy": "sanitized",
-  "scenarios": [
-    {"scenario_id":"one-flow","prompt":"Prototype the key booking approval flow so we can decide whether to build it.","observed_failures":["Built production architecture before validating the flow","Added unrelated screens","Did not state the decision"]},
-    {"scenario_id":"useful-variants","prompt":"Show variants for a travel proposal review experience.","observed_failures":["Produced cosmetic variants without hypotheses","Did not explain trade-offs","Had no structured feedback checkpoint"]},
-    {"scenario_id":"confidential-context","prompt":"Use our private customer research and brand references in a clickable prototype.","observed_failures":["Embedded confidential source text","Loaded remote assets","Produced a shareable artifact without a privacy boundary"]}
+  "schema_version": 1,"skill_id":"pragman-prototype","evaluation_kind":"behavioral","arm":"skill-off","privacy":"sanitized",
+  "scenarios":[
+    {"scenario_id":"one-flow","case_type":"trigger","prompt":"Prototype the key booking approval flow so we can decide whether to build it.","expected_trigger":true,"observed_failures":["Built production architecture before validating the flow","Added unrelated screens","Did not state the decision"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.decision_and_risk_stated","equals":true},{"path":"checks.smallest_complete_flow","equals":true},{"path":"checks.no_production_mutation","equals":true}]},
+    {"scenario_id":"useful-variants","case_type":"trigger","prompt":"Show variants for a travel proposal review experience.","expected_trigger":true,"observed_failures":["Produced cosmetic variants without hypotheses","Did not explain trade-offs","Had no structured feedback checkpoint"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.variants_have_hypotheses","equals":true},{"path":"checks.tradeoffs_explicit","equals":true},{"path":"checks.feedback_structured","equals":true}]},
+    {"scenario_id":"confidential-context","case_type":"trigger","prompt":"Use our private customer research and brand references in a clickable prototype.","expected_trigger":true,"observed_failures":["Embedded confidential source text","Loaded remote assets","Produced a shareable artifact without a privacy boundary"],"expected_invariants":[{"path":"triggered","equals":true},{"path":"checks.sensitive_sources_referenced","equals":true},{"path":"checks.no_network","equals":true},{"path":"checks.privacy_boundary_stated","equals":true}]},
+    {"scenario_id":"approved-copy-control","case_type":"non-trigger","prompt":"Apply this already-approved one-line copy correction to the production page; no exploration is needed.","expected_trigger":false,"observed_failures":["Created a disposable prototype for a settled implementation task"],"expected_invariants":[{"path":"triggered","equals":false},{"path":"checks.left_settled_change_to_implementation","equals":true}]}
   ]
 }

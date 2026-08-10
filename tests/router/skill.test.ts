@@ -18,6 +18,8 @@ test("adaptive router skill keeps fast work fast and preserves operational appro
   assert.match(skill, /CLI unavailable/);
   assert.match(reference, /request.*task_family.*desired_outcome/s);
   assert.deepEqual(baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), forward.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id));
-  assert.equal(forward.scenarios.every((scenario: { passed: boolean }) => scenario.passed), true);
+  assert.equal(baseline.scenarios.some((scenario: { case_type: string }) => scenario.case_type === "non-trigger"), true);
+  assert.equal(forward.scenarios.every((scenario: { observation: { triggered: boolean } }) => typeof scenario.observation.triggered === "boolean"), true);
+  assert.equal(JSON.stringify(forward).includes('"passed"'), false);
   assert.equal([skill, compatibility, metadata, reference].join("\n").includes("/Users/"), false);
 });
