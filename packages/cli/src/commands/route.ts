@@ -1,11 +1,11 @@
 import { readFile } from "node:fs/promises";
 
-import { loadProjectManifest } from "../../../config/src/index.ts";
 import { routeTask, RouterError, type RouteInput } from "../../../router/src/index.ts";
 import type { CliArguments } from "../args.ts";
 import { errorEnvelope, EXIT_CODES, successEnvelope } from "../envelope.ts";
 import type { CommandExecution, CommandIo } from "./events.ts";
 import { loadRuntimeProviderRegistry, projectProviderRegistry } from "./provider-support.ts";
+import { resolveRouteContext } from "./route-context.ts";
 import { observeRouteLifecycle, routeLifecycleEvents } from "./route-observation.ts";
 
 const FAMILIES = new Set(["explain", "research", "shape", "prototype", "implement", "debug", "review", "analyze", "operate", "administer"]);
@@ -43,8 +43,9 @@ function failure(error: unknown): CommandExecution {
   const command = "route";
   const code = error instanceof RouterError ? error.code : typeof error === "object" && error !== null && "code" in error ? String(error.code) : "INTERNAL";
   const message = error instanceof Error ? error.message : "Routing failed";
+  const invalidConfiguration = new Set(["INVALID_CONFIGURATION", "INCOMPATIBLE_VERSION", "INVALID_PATH", "WORKSPACE_MISMATCH"]);
   const exitCode = code === "NEEDS_INPUT" || code === "MISSING_PROVIDER" ? EXIT_CODES.needsInput
-    : code === "INVALID_INPUT" || code === "PROVIDER_REGISTRY_INVALID" ? EXIT_CODES.invalid
+    : code === "INVALID_INPUT" || code === "PROVIDER_REGISTRY_INVALID" || invalidConfiguration.has(code) ? EXIT_CODES.invalid
       : code === "INTERNAL" ? EXIT_CODES.internal : EXIT_CODES.denied;
   return { exitCode, envelope: errorEnvelope(command, code, message), human: message, stderr: true };
 }
@@ -55,33 +56,34 @@ export async function executeRouteCommand(arguments_: CliArguments, io: CommandI
     const input = await readInput(arguments_, io);
     assertRouteInput(input);
     const { registry, host, warnings, personalPreferences } = await loadRuntimeProviderRegistry(arguments_);
-    const requested = registry.validateRequestedCapabilities(input.requested_capabilities);
+    const context = await resolveRouteContext(arguments_, input);
+    const requested = registry.validateRequestedCapabilities(context.input.requested_capabilities);
     if (!requested.ok) throw new RouterError(requested.code, `Requested capabilities are invalid: ${requested.capabilities.join(", ")}`);
     const projected = projectProviderRegistry(registry);
-    const projectLinks: Record<string, string | null> = {};
-    if (input.project && arguments_.projectRoot) {
-      const manifest = await loadProjectManifest(arguments_.projectRoot);
-      if (manifest.project_id !== input.project) throw new RouterError("INVALID_INPUT", "Selected project root does not match route project");
-      projectLinks[input.project] = manifest.workspace;
-    }
-    const result = routeTask(input, {
+    const result = routeTask(context.input, {
       ...projected,
       activeHost: host,
-      allowedSideEffects: input.declared_side_effects,
-      projectLinks,
+      allowedSideEffects: context.input.declared_side_effects,
+      projectLinks: context.projectLinks,
+      secondaryConflicts: context.secondaryConflicts,
+      routingRules: context.routingRules,
+      projectPreferences: context.projectPreferences,
+      workspacePreferences: context.workspacePreferences,
       personalPreferences,
+      ...(context.explicitLane ? { explicitLane: context.explicitLane } : {}),
       ...(arguments_.provider ? { explicitProviders: [arguments_.provider] } : {}),
     });
+    const resultWithContext = context.evidence ? { ...result, context_policy_evidence: context.evidence } : result;
     if (result.status !== "ready" && result.status !== "existing") {
       const code = result.code;
       const human = result.requiredInput ?? result.recommendations?.join(", ") ?? code;
-      return { exitCode: EXIT_CODES.needsInput, envelope: errorEnvelope("route", code, human, result), human, stderr: true };
+      return { exitCode: EXIT_CODES.needsInput, envelope: errorEnvelope("route", code, human, resultWithContext), human, stderr: true };
     }
     const observationWarnings = await observeRouteLifecycle(arguments_, routeLifecycleEvents({
       routeId: result.contract.route_id, host, ...(arguments_.hostVersion ? { hostVersion: arguments_.hostVersion } : {}),
       provider: result.contract.providers[0] ?? null, status: "succeeded", startedAt,
     }));
-    return { exitCode: EXIT_CODES.success, envelope: successEnvelope("route", result, [...warnings, ...observationWarnings]), human: `${result.contract.lane} route: ${result.contract.providers.join(" → ") || "native response"}.`, stderr: false };
+    return { exitCode: EXIT_CODES.success, envelope: successEnvelope("route", resultWithContext, [...warnings, ...observationWarnings]), human: `${result.contract.lane} route: ${result.contract.providers.join(" → ") || "native response"}.`, stderr: false };
   } catch (error) {
     return failure(error);
   }
