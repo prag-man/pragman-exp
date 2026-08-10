@@ -35,6 +35,16 @@ export interface PersonalConfig extends JsonObject {
   output: JsonObject;
 }
 
+export interface PersonalProfile extends JsonObject {
+  schema_version: 1;
+  profile_id: string;
+  roles: string[];
+  responsibilities: string[];
+  preferences?: JsonObject;
+  prohibitions?: string[];
+  authority?: string[];
+}
+
 export interface ContextSource extends JsonObject {
   id: string;
   kind: string;
