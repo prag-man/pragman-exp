@@ -11,7 +11,18 @@ function fail(message) {
 }
 
 function getPath(value, path) {
-  return path.split(".").reduce((current, segment) => current?.[segment], value);
+  let current = value;
+  for (const segment of path.split(".")) {
+    if (
+      current === null ||
+      (typeof current !== "object" && typeof current !== "function") ||
+      !Object.hasOwn(current, segment)
+    ) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+  return current;
 }
 
 function canonicalize(value) {
@@ -73,6 +84,12 @@ function validateDocument(document) {
     for (const invariant of scenario.expected_invariants) {
       if (!invariant || typeof invariant.path !== "string" || !invariant.path || !("equals" in invariant)) {
         return `Invalid scenario invariant: ${scenario.id}`;
+      }
+      const forbiddenSegment = invariant.path
+        .split(".")
+        .find((segment) => ["__proto__", "prototype", "constructor"].includes(segment));
+      if (forbiddenSegment) {
+        return `Invalid scenario invariant: forbidden path segment ${forbiddenSegment}`;
       }
     }
   }

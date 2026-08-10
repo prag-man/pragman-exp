@@ -2,11 +2,38 @@
 
 import { parseArguments } from "./args.ts";
 import { errorEnvelope, EXIT_CODES, successEnvelope } from "./envelope.ts";
-import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const VERSION = "0.1.0";
+const PACKAGE_NAME = "@prag-man/pragman-exp";
+
+export function resolvePackageVersion(moduleUrl: string = import.meta.url): string {
+  let directory = dirname(fileURLToPath(moduleUrl));
+  while (true) {
+    try {
+      const metadata = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")) as {
+        name?: unknown;
+        version?: unknown;
+      };
+      if (
+        metadata.name === PACKAGE_NAME &&
+        typeof metadata.version === "string" &&
+        /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(metadata.version)
+      ) {
+        return metadata.version;
+      }
+    } catch {
+      // Continue to the parent; source, dist, and packed layouts have different depths.
+    }
+    const parent = dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  throw new Error(`Unable to locate ${PACKAGE_NAME} package metadata`);
+}
+
+const VERSION = resolvePackageVersion();
 
 function writeJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value)}\n`);

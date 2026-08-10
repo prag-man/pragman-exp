@@ -95,3 +95,36 @@ test("eval runner requires both modes and never persists secret-bearing observat
   assert.match(evidence.results[0].invariants[0].expected_digest, /^[a-f0-9]{64}$/);
   assert.match(evidence.results[0].invariants[0].observed_digest, /^[a-f0-9]{64}$/);
 });
+
+test("eval runner rejects prototype path segments and never reads inherited properties", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pragman-evals-prototype-"));
+  const scenarioPath = join(directory, "scenario.json");
+  const observedPath = join(directory, "observed.json");
+  const evidencePath = join(directory, "evidence.json");
+  await writeFile(scenarioPath, JSON.stringify({
+    schema_version: 1,
+    scenarios: [
+      { id: "baseline-prototype", mode: "baseline", input: {}, expected_invariants: [{ path: "constructor.name", equals: "Object" }] },
+      { id: "forward-prototype", mode: "forward-test", input: {}, expected_invariants: [{ path: "__proto__.polluted", equals: true }] },
+    ],
+  }));
+  await writeFile(observedPath, JSON.stringify({ "baseline-prototype": {}, "forward-prototype": {} }));
+
+  const rejected = spawnSync(process.execPath, [runner, scenarioPath, "--observed", observedPath, "--output", evidencePath], { encoding: "utf8" });
+  assert.equal(rejected.status, 2);
+  assert.match(rejected.stderr, /forbidden path segment/i);
+
+  await writeFile(scenarioPath, JSON.stringify({
+    schema_version: 1,
+    scenarios: [
+      { id: "baseline-inherited", mode: "baseline", input: {}, expected_invariants: [{ path: "toString.length", equals: 0 }] },
+      { id: "forward-inherited", mode: "forward-test", input: {}, expected_invariants: [{ path: "toString.length", equals: 0 }] },
+    ],
+  }));
+  await writeFile(observedPath, JSON.stringify({ "baseline-inherited": {}, "forward-inherited": {} }));
+
+  const inherited = spawnSync(process.execPath, [runner, scenarioPath, "--observed", observedPath, "--output", evidencePath], { encoding: "utf8" });
+  assert.equal(inherited.status, 1, inherited.stderr);
+  const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
+  assert.equal(evidence.results.every((result: { passed: boolean }) => !result.passed), true);
+});
