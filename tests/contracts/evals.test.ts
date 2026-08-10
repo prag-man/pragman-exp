@@ -8,6 +8,7 @@ import test from "node:test";
 const runner = new URL("../../scripts/run-evals.mjs", import.meta.url).pathname;
 
 const digest = (character: string) => character.repeat(64);
+const taskSuccessMetricDigest = "4dff84ed68b9428d96917ab696529aa01e1ae754513413f3c245105d0492034d";
 
 function skillEvaluationArm(
   arm: "skill-on" | "skill-off",
@@ -33,7 +34,7 @@ function skillEvaluationArm(
     model_version: "2026-08-01",
     harness_version: "1.0.0",
     metric_id: "task-success",
-    metric_definition_digest: digest("f"),
+    metric_definition_digest: taskSuccessMetricDigest,
     grader_id: "deterministic-task-check",
     grader_version: "1.0.0",
     grader_digest: digest("1"),
@@ -317,6 +318,38 @@ test("skill-eval mode rejects secret-shaped bounded identifiers before evidence 
   const rejected = await runSkillEvaluation(secretTrial, skillEvaluationArm("skill-on"));
   assert.equal(rejected.result.status, 2);
   assert.match(rejected.result.stderr, /invalid.*trial/i);
+});
+
+test("skill-eval derives utility and pass from the bundled metric and rejects tampered claims", async () => {
+  const source = skillEvaluationArm("skill-on");
+  const tampered = {
+    ...source,
+    cases: source.cases.map((evaluationCase, caseIndex) => ({
+      ...evaluationCase,
+      trials: evaluationCase.trials.map((trial, trialIndex) => caseIndex === 0 && trialIndex === 0
+        ? { ...trial, utility: 0, passed: false }
+        : trial),
+    })),
+  };
+  const rejected = await runSkillEvaluation(skillEvaluationArm("skill-off"), tampered);
+  assert.equal(rejected.result.status, 2);
+  assert.match(rejected.result.stderr, /metric.*outcome|utility|pass/i);
+});
+
+test("skill-eval rejects unregistered metric digests and metric identity tampering", async () => {
+  const unregistered = await runSkillEvaluation(
+    skillEvaluationArm("skill-off"),
+    skillEvaluationArm("skill-on", { metric_definition_digest: digest("f") }),
+  );
+  assert.equal(unregistered.result.status, 2);
+  assert.match(unregistered.result.stderr, /metric registration/i);
+
+  const renamed = await runSkillEvaluation(
+    skillEvaluationArm("skill-off"),
+    skillEvaluationArm("skill-on", { metric_id: "renamed-task-success" }),
+  );
+  assert.equal(renamed.result.status, 2);
+  assert.match(renamed.result.stderr, /metric registration/i);
 });
 
 test("the packaged deterministic eval suite includes its public fixtures", async () => {

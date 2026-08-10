@@ -9,12 +9,13 @@ import { parse as parseYaml } from "yaml";
 
 import personalConfigSchema from "../../config/schemas/personal-config.schema.json" with { type: "json" };
 import { appendBestEffort, type BestEffortDependencies, type BestEffortResult } from "./store.ts";
+import { DEFAULT_RETENTION_POLICY, resolveRetentionPolicy, type RetentionPolicy } from "./retention.ts";
 import type { SkillEvent } from "./types.ts";
 
 export const DEFAULT_PERSONAL_CONFIG_PATH = join(homedir(), ".pragman", "config.yaml");
 
 export type MeasurementSettingsResolution =
-  | { ok: true; local_events: boolean; telemetry_enabled: false }
+  | { ok: true; local_events: boolean; telemetry_enabled: false; retention_policy: RetentionPolicy }
   | { ok: false; code: "CONFIG_INVALID" | "CONFIG_VERSION_UNSUPPORTED"; local_events: false; telemetry_enabled: false };
 
 export type LoadedEventSettings = MeasurementSettingsResolution & { config_path: string };
@@ -39,8 +40,13 @@ export function resolveMeasurementSettings(value: unknown): MeasurementSettingsR
     normalized.measurement = { ...normalized.measurement, local_events: true };
   }
   if (!validatePersonalConfig(normalized)) return { ok: false, code: "CONFIG_INVALID", local_events: false, telemetry_enabled: false };
-  const measurement = normalized.measurement as { local_events: boolean };
-  return { ok: true, local_events: measurement.local_events, telemetry_enabled: false };
+  const measurement = normalized.measurement as { local_events: boolean; retention?: Partial<RetentionPolicy> };
+  return {
+    ok: true,
+    local_events: measurement.local_events,
+    telemetry_enabled: false,
+    retention_policy: resolveRetentionPolicy(measurement.retention ?? {}),
+  };
 }
 
 export async function loadEventSettings(selectedPath: string = DEFAULT_PERSONAL_CONFIG_PATH): Promise<LoadedEventSettings> {
@@ -49,7 +55,7 @@ export async function loadEventSettings(selectedPath: string = DEFAULT_PERSONAL_
     text = await readFile(selectedPath, "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { ok: true, config_path: selectedPath, local_events: true, telemetry_enabled: false };
+      return { ok: true, config_path: selectedPath, local_events: true, telemetry_enabled: false, retention_policy: { ...DEFAULT_RETENTION_POLICY } };
     }
     return { ok: false, code: "CONFIG_INVALID", config_path: selectedPath, local_events: false, telemetry_enabled: false };
   }

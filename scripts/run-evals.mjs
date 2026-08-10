@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
@@ -100,6 +100,9 @@ function validateDocument(document) {
 }
 
 function parseArguments(argv) {
+  if (argv.length === 3 && argv[0] === "--mode" && argv[1] === "skill-eval" && argv[2] === "--stdio") {
+    return { mode: "skill-eval", stdio: true };
+  }
   const skillMode = argv[0] === "--mode";
   const mode = skillMode ? argv[1] : "invariants";
   const scenarioPath = skillMode ? argv[2] : argv[0];
@@ -152,7 +155,81 @@ function isCounter(value) {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
-function validateSkillTrial(trial, documentLabel, caseId) {
+async function loadBundledMetricRegistry() {
+  const directory = new URL("../evals/metrics/", import.meta.url);
+  const registry = new Map();
+  try {
+    const entries = (await readdir(directory, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const definition = JSON.parse(await readFile(new URL(entry.name, directory), "utf8"));
+      if (!isPlainObject(definition) || definition.schema_version !== 1 || !isBoundedId(definition.metric_id)) {
+        throw new Error("invalid metric");
+      }
+      const definitionDigest = safeDigest(definition);
+      if (registry.has(definitionDigest)) throw new Error("duplicate metric");
+      registry.set(definitionDigest, definition);
+    }
+  } catch {
+    throw new Error("Bundled metric registry is invalid");
+  }
+  if (registry.size === 0) throw new Error("Bundled metric registry is empty");
+  return registry;
+}
+
+function metricOutcome(metric, value) {
+  let utility;
+  let comparable = value;
+  if (metric.value_type === "boolean") {
+    if (typeof value !== "boolean" || !Array.isArray(metric.boolean_values)) throw new Error("outside metric domain");
+    const definition = metric.boolean_values.find((entry) => entry.value === value);
+    if (!definition || typeof definition.utility !== "number") throw new Error("outside metric domain");
+    utility = definition.utility;
+  } else if (metric.value_type === "category") {
+    if (typeof value !== "string" || !Array.isArray(metric.categories)) throw new Error("outside metric domain");
+    const definition = metric.categories.find((entry) => entry.id === value);
+    if (!definition || typeof definition.utility !== "number" || !Number.isSafeInteger(definition.rank)) throw new Error("outside metric domain");
+    utility = definition.utility;
+    if (metric.pass_rule?.operator !== "eq") comparable = definition.rank;
+  } else {
+    if (typeof value !== "number" || !Number.isFinite(value) || !isPlainObject(metric.number_range)) throw new Error("outside metric domain");
+    const { min, max } = metric.number_range;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || !(max > min) || value < min || value > max) throw new Error("outside metric domain");
+    if (metric.direction === "maximize") utility = (value - min) / (max - min);
+    else if (metric.direction === "minimize") utility = (max - value) / (max - min);
+    else if (typeof metric.target === "number") {
+      const denominator = Math.max(metric.target - min, max - metric.target);
+      if (!(denominator > 0)) throw new Error("invalid metric target");
+      utility = 1 - Math.min(1, Math.abs(value - metric.target) / denominator);
+    } else if (isPlainObject(metric.target_range)) {
+      if (value >= metric.target_range.min && value <= metric.target_range.max) utility = 1;
+      else if (value < metric.target_range.min) {
+        const denominator = metric.target_range.min - min;
+        if (!(denominator > 0)) throw new Error("invalid metric target");
+        utility = 1 - Math.min(1, (metric.target_range.min - value) / denominator);
+      } else {
+        const denominator = max - metric.target_range.max;
+        if (!(denominator > 0)) throw new Error("invalid metric target");
+        utility = 1 - Math.min(1, (value - metric.target_range.max) / denominator);
+      }
+    } else throw new Error("invalid metric target");
+  }
+  if (!Number.isFinite(utility) || utility < 0 || utility > 1 || !isPlainObject(metric.pass_rule)) {
+    throw new Error("invalid metric outcome");
+  }
+  const rule = metric.pass_rule;
+  const passed = rule.operator === "eq"
+    ? comparable === rule.value
+    : typeof comparable === "number" && (rule.operator === "gte"
+      ? comparable >= rule.value
+      : rule.operator === "lte"
+        ? comparable <= rule.value
+        : rule.operator === "between" && comparable >= rule.min && comparable <= rule.max);
+  return { utility: stableNumber(utility), passed: Boolean(passed) };
+}
+
+function validateSkillTrial(trial, documentLabel, caseId, metric) {
   if (!isPlainObject(trial)) return `Invalid ${documentLabel} trial in ${caseId}`;
   const unknown = Object.keys(trial).find((field) => !TRIAL_FIELDS.has(field));
   if (unknown) return `Invalid ${documentLabel} trial: unknown field ${unknown}`;
@@ -166,10 +243,20 @@ function validateSkillTrial(trial, documentLabel, caseId) {
     || !["duration_ms", "retries", "rework_cycles", "tool_calls"].every((field) => isCounter(trial[field]))) {
     return `Invalid ${documentLabel} trial in ${caseId}`;
   }
+  try {
+    const derived = metricOutcome(metric, trial.metric_value);
+    if (Math.abs(trial.utility - derived.utility) > 1e-12
+      || trial.passed !== derived.passed
+      || trial.verified_success !== derived.passed) {
+      return `Invalid ${documentLabel} deterministic metric outcome in ${caseId}`;
+    }
+  } catch {
+    return `Invalid ${documentLabel} metric value in ${caseId}`;
+  }
   return null;
 }
 
-function validateSkillEvaluationArm(document, documentLabel) {
+function validateSkillEvaluationArm(document, documentLabel, metricRegistry) {
   if (!isPlainObject(document)) return `Invalid ${documentLabel} skill evaluation document`;
   const unknown = Object.keys(document).find((field) => !SKILL_EVAL_FIELDS.has(field));
   if (unknown) return `Invalid ${documentLabel} skill evaluation: unknown field ${unknown}`;
@@ -194,6 +281,10 @@ function validateSkillEvaluationArm(document, documentLabel) {
   if (document.grader_type !== "deterministic") {
     return `Invalid ${documentLabel} skill evaluation: public fixtures require a deterministic grader`;
   }
+  const metric = metricRegistry.get(document.metric_definition_digest);
+  if (!metric || metric.metric_id !== document.metric_id) {
+    return `Invalid ${documentLabel} skill evaluation metric registration`;
+  }
   if (!Array.isArray(document.cases) || document.cases.length === 0 || document.cases.length > 64) {
     return `Invalid ${documentLabel} skill evaluation cases`;
   }
@@ -212,7 +303,7 @@ function validateSkillEvaluationArm(document, documentLabel) {
     }
     const trialIds = new Set();
     for (const trial of evaluationCase.trials) {
-      const trialError = validateSkillTrial(trial, documentLabel, evaluationCase.case_id);
+      const trialError = validateSkillTrial(trial, documentLabel, evaluationCase.case_id, metric);
       if (trialError) return trialError;
       if (trialIds.has(trial.trial_id)) return `Invalid ${documentLabel} skill evaluation: duplicate trial identity`;
       trialIds.add(trial.trial_id);
@@ -259,12 +350,13 @@ function numericMetric(value) {
   return null;
 }
 
-function publicTrial(trial) {
+function publicTrial(trial, metric) {
+  const derived = metricOutcome(metric, trial.metric_value);
   return {
-    passed: trial.passed,
-    verified_success: trial.verified_success,
+    passed: derived.passed,
+    verified_success: derived.passed,
     metric_value: trial.metric_value,
-    utility: trial.utility,
+    utility: derived.utility,
     duration_ms: trial.duration_ms,
     retries: trial.retries,
     rework_cycles: trial.rework_cycles,
@@ -272,7 +364,7 @@ function publicTrial(trial) {
   };
 }
 
-function buildSkillEvaluationEvidence(first, second) {
+function buildSkillEvaluationEvidence(first, second, metricRegistry) {
   if (first.arm === second.arm) {
     throw new Error(`Capability skill evaluation requires explicit skill-off and skill-on arms`);
   }
@@ -296,6 +388,8 @@ function buildSkillEvaluationEvidence(first, second) {
   if (reasons.length > 0) {
     return { schema_version: 2, mode: "skill-eval", status: "INCOMPARABLE", reasons: [...new Set(reasons)].sort() };
   }
+  const metric = metricRegistry.get(on.metric_definition_digest);
+  if (!metric || metric.metric_id !== on.metric_id) throw new Error("Registered metric definition is unavailable");
 
   const pairs = caseIds.flatMap((caseId) => {
     const offTrials = new Map(offCases.get(caseId).trials.map((trial) => [trial.trial_id, trial]));
@@ -306,8 +400,8 @@ function buildSkillEvaluationEvidence(first, second) {
       return {
         case_id: caseId,
         trial_id: onTrial.trial_id,
-        skill_on: publicTrial(onTrial),
-        skill_off: publicTrial(offTrial),
+        skill_on: publicTrial(onTrial, metric),
+        skill_off: publicTrial(offTrial, metric),
         metric_delta: onMetric === null || offMetric === null ? null : stableNumber(onMetric - offMetric),
         utility_delta: stableNumber(onTrial.utility - offTrial.utility),
         efficiency_delta: {
@@ -358,8 +452,23 @@ function buildSkillEvaluationEvidence(first, second) {
 async function readJson(path, label) {
   try {
     return JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    throw new Error(`Invalid ${label}: ${error instanceof Error ? error.message : String(error)}`);
+  } catch {
+    throw new Error(`Invalid ${label} JSON`);
+  }
+}
+
+async function readStdinJson() {
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  try {
+    const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (!isPlainObject(value) || Object.keys(value).length !== 2
+      || !Object.hasOwn(value, "scenario") || !Object.hasOwn(value, "observed")) {
+      throw new Error("shape");
+    }
+    return value;
+  } catch {
+    throw new Error("Invalid stdio evaluation input");
   }
 }
 
@@ -373,31 +482,48 @@ async function main(argv) {
   let document;
   let observed;
   try {
-    document = await readJson(options.scenarioPath, "scenario document");
-    observed = await readJson(options.observedPath, "observed results");
+    if (options.stdio) {
+      const input = await readStdinJson();
+      document = input.scenario;
+      observed = input.observed;
+    } else {
+      document = await readJson(options.scenarioPath, "scenario document");
+      observed = await readJson(options.observedPath, "observed results");
+    }
   } catch (error) {
-    fail(error instanceof Error ? error.message : String(error));
+    fail(error instanceof Error ? error.message : "Invalid evaluation input");
     return;
   }
 
   if (options.mode === "skill-eval") {
-    const scenarioError = validateSkillEvaluationArm(document, "baseline");
-    const observedError = validateSkillEvaluationArm(observed, "forward");
+    let metricRegistry;
+    try {
+      metricRegistry = await loadBundledMetricRegistry();
+    } catch (error) {
+      fail(error instanceof Error ? error.message : "Bundled metric registry is invalid");
+      return;
+    }
+    const scenarioError = validateSkillEvaluationArm(document, "baseline", metricRegistry);
+    const observedError = validateSkillEvaluationArm(observed, "forward", metricRegistry);
     if (scenarioError || observedError) {
       fail(scenarioError ?? observedError);
       return;
     }
     let evidence;
     try {
-      evidence = buildSkillEvaluationEvidence(document, observed);
+      evidence = buildSkillEvaluationEvidence(document, observed, metricRegistry);
     } catch (error) {
       fail(error instanceof Error ? error.message : String(error));
       return;
     }
-    if (options.outputPath !== "-") {
+    if (options.stdio) {
+      process.stdout.write(`${JSON.stringify(evidence)}\n`);
+    } else if (options.outputPath !== "-") {
       await writeFile(options.outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { flag: "w" });
+      process.stdout.write(`${JSON.stringify({ status: evidence.status, pair_count: evidence.pair_count ?? 0 })}\n`);
+    } else {
+      process.stdout.write(`${JSON.stringify({ status: evidence.status, pair_count: evidence.pair_count ?? 0 })}\n`);
     }
-    process.stdout.write(`${JSON.stringify({ status: evidence.status, pair_count: evidence.pair_count ?? 0 })}\n`);
     return;
   }
 

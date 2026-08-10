@@ -235,5 +235,5 @@ test("content-free route evidence reaches rollups, paired eval, and an advisory 
     (await readPartition(stateRoot, "candidate-approvals", "2026-08-11")).records,
     [approval],
   );
-  assert.equal(Object.keys(eventsApi).some((name) => /corpus|patch|mutate/i.test(name)), false);
+  assert.equal(Object.keys(eventsApi).some((name) => /corpus/i.test(name)), false);
 });

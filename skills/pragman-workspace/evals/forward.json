@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "skill_id": "pragman-workspace",
+  "evaluation_kind": "behavioral",
+  "arm": "skill-on",
+  "privacy": "sanitized",
+  "scenarios": [
+    {
+      "scenario_id": "multiple-workspaces",
+      "passed": true,
+      "invariants": ["One primary workspace", "Ordered additional workspace aliases", "Conflicts stay unresolved until chosen", "No cross-workspace scalar override"]
+    },
+    {
+      "scenario_id": "primary-project-link",
+      "passed": true,
+      "invariants": ["Exactly one primary link", "Preview before mutation", "Apply bound to unchanged digest", "Post-apply validation"]
+    },
+    {
+      "scenario_id": "canonical-context-privacy",
+      "passed": true,
+      "invariants": ["Canonical source is referenced, not copied", "Sensitivity is explicit", "Outputs omit paths and source bodies", "CLI-unavailable limitations disclosed"]
+    }
+  ]
+}

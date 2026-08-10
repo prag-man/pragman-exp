@@ -64,6 +64,38 @@ test("daily rollups use bounded dimensions, latest corrections, and canonical so
   assert.equal(verifyRollup(rollup, [event(1), event(2)], [original, correction], new Map([[digest("e"), metric]])).valid, true);
 });
 
+test("daily rollups assign cross-midnight lifecycle events and delayed scores to the invoked day", () => {
+  const invoked = event(1, "2026-08-10", { timestamp: "2026-08-10T23:59:00Z" });
+  const completed = event(2, "2026-08-11", { timestamp: "2026-08-11T00:02:00Z" });
+  const delayedScore = score(1, 8, { timestamp: "2026-08-12T09:00:00Z" });
+
+  const invokedDay = buildDailyRollups(
+    [invoked, completed],
+    [delayedScore],
+    new Map([[digest("e"), metric]]),
+    "2026-08-10",
+  );
+  const completionDay = buildDailyRollups(
+    [invoked, completed],
+    [delayedScore],
+    new Map([[digest("e"), metric]]),
+    "2026-08-11",
+  );
+
+  assert.equal(invokedDay.length, 1);
+  assert.deepEqual(invokedDay[0]!.counts, {
+    eligible: 0, invoked: 1, completed: 1, cancelled: 0, verified: 0, incomplete: 0,
+  });
+  assert.deepEqual(invokedDay[0]!.score_aggregate, {
+    count: 1, sum: 8, utility_sum: 0.8, pass_count: 1, correction_count: 0,
+  });
+  assert.equal(invokedDay[0]!.source_record_count, 3);
+  assert.equal(verifyRollup(
+    invokedDay[0]!, [invoked, completed], [delayedScore], new Map([[digest("e"), metric]]),
+  ).valid, true);
+  assert.deepEqual(completionDay, []);
+});
+
 test("daily to weekly aggregation is deterministic and sealing changes only sealed state and id", () => {
   const first = buildDailyRollups([event(1), event(2)], [], new Map(), "2026-08-10")[0]!;
   const next = buildDailyRollups([event(1, "2026-08-11"), event(2, "2026-08-11")], [], new Map(), "2026-08-11")[0]!;
@@ -78,10 +110,14 @@ test("daily to weekly aggregation is deterministic and sealing changes only seal
 
 test("rebuild replaces recent derived days and preserves sealed history", () => {
   const oldSealed = sealRollup(buildDailyRollups([event(1), event(2)], [], new Map(), "2026-08-10")[0]!);
-  const recent = buildDailyRollups([event(1, "2026-08-11"), event(2, "2026-08-11")], [], new Map(), "2026-08-11")[0]!;
+  const recentInvocationId = "10000002-7f2d-7a51-a9c0-1d4cb73b10ab";
+  const recent = buildDailyRollups([
+    event(1, "2026-08-11", { invocation_id: recentInvocationId }),
+    event(2, "2026-08-11", { invocation_id: recentInvocationId }),
+  ], [], new Map(), "2026-08-11")[0]!;
   const rebuilt = rebuildRollups(
     [oldSealed, recent],
-    [event(1), event(2), event(1, "2026-08-11"), event(2, "2026-08-11", { duration_ms: 200 })],
+    [event(1), event(2), event(1, "2026-08-11", { invocation_id: recentInvocationId }), event(2, "2026-08-11", { invocation_id: recentInvocationId, duration_ms: 200 })],
     [], new Map(), "2026-08-10", "2026-08-11",
   );
   assert.equal(rebuilt.daily.filter((rollup) => rollup.period_start.startsWith("2026-08-10")).length, 1);

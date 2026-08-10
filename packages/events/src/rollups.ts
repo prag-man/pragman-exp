@@ -153,7 +153,20 @@ function assignScores(rollup: SkillRollup, chains: GroupInput["scoreChains"], re
 export function buildDailyRollups(
   events: readonly SkillEvent[], scores: readonly SkillScore[], registry: MetricRegistry, date: string,
 ): SkillRollup[] {
-  const dayEvents = events.filter((event) => event.timestamp.slice(0, 10) === date);
+  const invocationAnchors = new Map<string, string>();
+  for (const event of [...events].sort((left, right) => left.timestamp.localeCompare(right.timestamp))) {
+    const current = invocationAnchors.get(event.invocation_id);
+    if (event.event_type === "invoked") {
+      if (current === undefined || event.timestamp < current) invocationAnchors.set(event.invocation_id, event.timestamp);
+    } else if (current === undefined) {
+      invocationAnchors.set(event.invocation_id, event.timestamp);
+    }
+  }
+  const invokedAnchors = new Map(events
+    .filter((event) => event.event_type === "invoked")
+    .map((event) => [event.invocation_id, event.timestamp]));
+  for (const [invocationId, timestamp] of invokedAnchors) invocationAnchors.set(invocationId, timestamp);
+  const dayEvents = events.filter((event) => invocationAnchors.get(event.invocation_id)?.slice(0, 10) === date);
   const eventsByInvocation = new Map<string, SkillEvent[]>();
   for (const event of dayEvents) {
     const records = eventsByInvocation.get(event.invocation_id) ?? [];

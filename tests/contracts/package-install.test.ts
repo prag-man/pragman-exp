@@ -55,4 +55,20 @@ test("packed package installs an emitted pragman binary that runs through a syml
   const output = JSON.parse(result.stdout);
   assert.equal(output.command, "version");
   assert.equal(output.data.version, installedPackage.version);
+
+  const evalOutput = join(consumerDirectory, "packed-evidence.json");
+  const evalResult = spawnSync(join(consumerDirectory, "node_modules/.bin/pragman"), [
+    "eval", "run", "--state-root", join(consumerDirectory, "event-state"), "--json",
+  ], {
+    cwd: consumerDirectory,
+    encoding: "utf8",
+    input: JSON.stringify({
+      scenario_file: join(installedRoot, "evals/fixtures/skill-events/baseline.json"),
+      observed_file: join(installedRoot, "evals/fixtures/skill-events/forward.json"),
+      output_file: evalOutput,
+    }),
+  });
+  assert.equal(evalResult.status, 0, evalResult.stderr);
+  assert.equal(JSON.parse(evalResult.stdout).data.evidence.mode, "skill-eval");
+  assert.equal(JSON.parse(await readFile(evalOutput, "utf8")).status, "COMPARABLE");
 });

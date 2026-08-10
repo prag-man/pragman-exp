@@ -18,7 +18,7 @@
   "model_version": "2026-08-01",
   "harness_version": "1.0.0",
   "metric_id": "task-success",
-  "metric_definition_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "metric_definition_digest": "4dff84ed68b9428d96917ab696529aa01e1ae754513413f3c245105d0492034d",
   "grader_id": "deterministic-task-check",
   "grader_version": "1.0.0",
   "grader_digest": "1111111111111111111111111111111111111111111111111111111111111111",

@@ -1,3 +1,6 @@
+import { metricPasses, normalizeMetricUtility } from "./metrics.ts";
+import type { SkillMetric, SkillScore } from "./types.ts";
+
 export type AblationArm = "skill-on" | "skill-off";
 
 export interface AblationTrial {
@@ -20,9 +23,7 @@ export interface AblationTrial {
   grader_id: string;
   grader_version: string;
   rubric_digest: string;
-  raw_value: boolean | number | string;
-  utility: number;
-  passed: boolean;
+  raw_value: SkillScore["value"];
   verified_success: boolean;
   duration_ms: number;
   retries: number;
@@ -50,14 +51,26 @@ const COMPARABLE_FIELDS = [
   ["rubric_digest", "RUBRIC_DIGEST_MISMATCH"],
 ] as const satisfies readonly (readonly [keyof AblationTrial, AblationIncomparabilityReason])[];
 
+export interface SanitizedAblationArmResult {
+  raw_value: SkillScore["value"];
+  utility: number;
+  passed: boolean;
+  verified_success: boolean;
+  duration_ms: number;
+  retries: number;
+  rework_cycles: number;
+  tool_calls: number;
+}
+
 export interface AblationPairResult {
   pair_id: string;
   case_id: string;
   trial_id: string;
-  skill_on: AblationTrial;
-  skill_off: AblationTrial;
+  skill_on: SanitizedAblationArmResult;
+  skill_off: SanitizedAblationArmResult;
   raw_delta: number | null;
   utility_delta: number;
+  pass_delta: number;
   verified_success_delta: number;
   efficiency_delta: { duration_ms: number; retries: number; rework_cycles: number; tool_calls: number };
 }
@@ -66,11 +79,28 @@ export type AblationComparison =
   | { status: "INCOMPARABLE"; reasons: AblationIncomparabilityReason[] }
   | {
     status: "COMPARABLE"; pair_count: number; raw_metric_delta: number | null; skill_on_raw_mean: number | null;
-    skill_off_raw_mean: number | null; utility_lift: number; outcome_lift: number; verified_success_lift: number;
+    skill_off_raw_mean: number | null; utility_lift: number; outcome_lift: number | null; pass_lift: number;
+    verified_success_lift: number;
     efficiency_delta: { duration_ms: number; retries: number; rework_cycles: number; tool_calls: number };
     pairs: AblationPairResult[]; significance: { confidence_level: 0.95; lower: number; upper: number; significant: boolean } | null;
     significance_reason: "MINIMUM_20_PAIRS_REQUIRED" | null;
   };
+
+const TRIAL_FIELDS = new Set<keyof AblationTrial>([
+  "arm", "eval_id", "eval_corpus_digest", "trial_policy_digest", "case_id", "trial_id", "skill_digest",
+  "provider", "provider_digest", "host", "host_version", "model", "model_version", "harness_version",
+  "metric_id", "metric_definition_digest", "grader_id", "grader_version", "rubric_digest", "raw_value",
+  "verified_success", "duration_ms", "retries", "rework_cycles", "tool_calls",
+]);
+const DIGEST_FIELDS = [
+  "eval_corpus_digest", "trial_policy_digest", "skill_digest", "provider_digest", "metric_definition_digest", "rubric_digest",
+] as const satisfies readonly (keyof AblationTrial)[];
+const ID_FIELDS = ["eval_id", "case_id", "trial_id", "provider", "host", "model", "metric_id", "grader_id"] as const;
+const VERSION_FIELDS = ["host_version", "model_version", "harness_version", "grader_version"] as const;
+const COUNTER_FIELDS = ["duration_ms", "retries", "rework_cycles", "tool_calls"] as const;
+const SAFE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]*$/;
+const SHA256 = /^[a-f0-9]{64}$/;
+const KNOWN_SECRET = /(?:sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,})/;
 
 function mean(values: readonly number[]): number {
   return values.reduce((total, value) => total + value, 0) / values.length;
@@ -84,7 +114,58 @@ function rawNumber(value: AblationTrial["raw_value"]): number | null {
   return typeof value === "number" ? value : typeof value === "boolean" ? Number(value) : null;
 }
 
-export function compareAblation(trials: readonly AblationTrial[]): AblationComparison {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    && Object.getPrototypeOf(value) === Object.prototype;
+}
+
+function isSafeToken(value: unknown, maximum: number): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= maximum
+    && SAFE_TOKEN.test(value) && !KNOWN_SECRET.test(value);
+}
+
+function assertTrialShape(value: unknown): asserts value is AblationTrial {
+  if (!isPlainObject(value)) throw new TypeError("Ablation trial must be a plain content-free object");
+  const keys = Object.keys(value);
+  if (keys.length !== TRIAL_FIELDS.size || keys.some((key) => !TRIAL_FIELDS.has(key as keyof AblationTrial))) {
+    throw new TypeError("Ablation trial must use the exact content-free schema");
+  }
+  if (value.arm !== "skill-on" && value.arm !== "skill-off") throw new TypeError("Invalid ablation arm");
+  for (const field of ID_FIELDS) if (!isSafeToken(value[field], 128)) throw new TypeError(`Invalid ablation identity: ${field}`);
+  for (const field of VERSION_FIELDS) if (!isSafeToken(value[field], 64)) throw new TypeError(`Invalid ablation version: ${field}`);
+  for (const field of DIGEST_FIELDS) if (typeof value[field] !== "string" || !SHA256.test(value[field])) throw new TypeError(`Invalid ablation digest: ${field}`);
+  for (const field of COUNTER_FIELDS) if (!Number.isSafeInteger(value[field]) || (value[field] as number) < 0) throw new TypeError(`Invalid ablation counter: ${field}`);
+  if (typeof value.verified_success !== "boolean") throw new TypeError("Invalid verified-success value");
+  if (!(typeof value.raw_value === "boolean"
+    || (typeof value.raw_value === "number" && Number.isFinite(value.raw_value))
+    || isSafeToken(value.raw_value, 64))) throw new TypeError("Invalid raw metric value");
+}
+
+function sanitizedArm(trial: AblationTrial, metric: SkillMetric): SanitizedAblationArmResult {
+  if (trial.metric_id !== metric.metric_id) throw new RangeError("Registered metric ID does not match the trial");
+  const utility = normalizeMetricUtility(metric, trial.raw_value);
+  const passed = metricPasses(metric, trial.raw_value);
+  return {
+    raw_value: trial.raw_value,
+    utility,
+    passed,
+    verified_success: trial.verified_success,
+    duration_ms: trial.duration_ms,
+    retries: trial.retries,
+    rework_cycles: trial.rework_cycles,
+    tool_calls: trial.tool_calls,
+  };
+}
+
+export function compareAblation(
+  trialsValue: readonly AblationTrial[],
+  metricRegistry: ReadonlyMap<string, SkillMetric>,
+): AblationComparison {
+  if (!Array.isArray(trialsValue) || !(metricRegistry instanceof Map)) {
+    throw new TypeError("Ablation comparison requires trials and a registered metric map");
+  }
+  for (const trial of trialsValue) assertTrialShape(trial);
+  const trials = trialsValue as readonly AblationTrial[];
   const reasons = new Set<AblationIncomparabilityReason>();
   const on = trials.filter((trial) => trial.arm === "skill-on");
   const off = trials.filter((trial) => trial.arm === "skill-off");
@@ -113,19 +194,31 @@ export function compareAblation(trials: readonly AblationTrial[]): AblationCompa
     && (onMap.size !== offMap.size || [...onMap.keys()].some((key) => !offMap.has(key)))) reasons.add("PAIRED_TRIAL_IDS_MISMATCH");
   if (reasons.size > 0) return { status: "INCOMPARABLE", reasons: [...reasons] };
 
+  const metricDigest = first!.metric_definition_digest;
+  const metric = metricRegistry.get(metricDigest);
+  if (!metric) throw new RangeError("Referenced metric definition is not registered");
   const pairs = [...onMap.keys()].sort().map((key): AblationPairResult => {
-    const skillOn = onMap.get(key)!;
-    const skillOff = offMap.get(key)!;
+    const onTrial = onMap.get(key)!;
+    const offTrial = offMap.get(key)!;
+    const skillOn = sanitizedArm(onTrial, metric);
+    const skillOff = sanitizedArm(offTrial, metric);
     const onRaw = rawNumber(skillOn.raw_value);
     const offRaw = rawNumber(skillOff.raw_value);
     return {
-      pair_id: key, case_id: skillOn.case_id, trial_id: skillOn.trial_id, skill_on: skillOn, skill_off: skillOff,
-      raw_delta: onRaw === null || offRaw === null ? null : onRaw - offRaw,
-      utility_delta: skillOn.utility - skillOff.utility,
+      pair_id: key,
+      case_id: onTrial.case_id,
+      trial_id: onTrial.trial_id,
+      skill_on: skillOn,
+      skill_off: skillOff,
+      raw_delta: onRaw === null || offRaw === null ? null : stableNumber(onRaw - offRaw),
+      utility_delta: stableNumber(skillOn.utility - skillOff.utility),
+      pass_delta: Number(skillOn.passed) - Number(skillOff.passed),
       verified_success_delta: Number(skillOn.verified_success) - Number(skillOff.verified_success),
       efficiency_delta: {
-        duration_ms: skillOn.duration_ms - skillOff.duration_ms, retries: skillOn.retries - skillOff.retries,
-        rework_cycles: skillOn.rework_cycles - skillOff.rework_cycles, tool_calls: skillOn.tool_calls - skillOff.tool_calls,
+        duration_ms: skillOn.duration_ms - skillOff.duration_ms,
+        retries: skillOn.retries - skillOff.retries,
+        rework_cycles: skillOn.rework_cycles - skillOff.rework_cycles,
+        tool_calls: skillOn.tool_calls - skillOff.tool_calls,
       },
     };
   });
@@ -140,14 +233,26 @@ export function compareAblation(trials: readonly AblationTrial[]): AblationCompa
     const margin = 1.96 * Math.sqrt(variance / utilityDeltas.length);
     significance = { confidence_level: 0.95, lower: average - margin, upper: average + margin, significant: average - margin > 0 || average + margin < 0 };
   }
+  const outcomeLift = hasRaw ? stableNumber(mean(onRaw) - mean(offRaw)) : null;
   const averageDelta = (field: keyof AblationPairResult["efficiency_delta"]) => mean(pairs.map((pair) => pair.efficiency_delta[field]));
   return {
-    status: "COMPARABLE", pair_count: pairs.length,
-    raw_metric_delta: hasRaw ? mean(onRaw) - mean(offRaw) : null,
-    skill_on_raw_mean: hasRaw ? mean(onRaw) : null, skill_off_raw_mean: hasRaw ? mean(offRaw) : null,
-    utility_lift: stableNumber(mean(utilityDeltas)), outcome_lift: stableNumber(mean(pairs.map((pair) => Number(pair.skill_on.passed) - Number(pair.skill_off.passed)))),
+    status: "COMPARABLE",
+    pair_count: pairs.length,
+    raw_metric_delta: outcomeLift,
+    skill_on_raw_mean: hasRaw ? stableNumber(mean(onRaw)) : null,
+    skill_off_raw_mean: hasRaw ? stableNumber(mean(offRaw)) : null,
+    outcome_lift: outcomeLift,
+    utility_lift: stableNumber(mean(utilityDeltas)),
+    pass_lift: stableNumber(mean(pairs.map((pair) => pair.pass_delta))),
     verified_success_lift: stableNumber(mean(pairs.map((pair) => pair.verified_success_delta))),
-    efficiency_delta: { duration_ms: stableNumber(averageDelta("duration_ms")), retries: stableNumber(averageDelta("retries")), rework_cycles: stableNumber(averageDelta("rework_cycles")), tool_calls: stableNumber(averageDelta("tool_calls")) },
-    pairs, significance, significance_reason: pairs.length < 20 ? "MINIMUM_20_PAIRS_REQUIRED" : null,
+    efficiency_delta: {
+      duration_ms: stableNumber(averageDelta("duration_ms")),
+      retries: stableNumber(averageDelta("retries")),
+      rework_cycles: stableNumber(averageDelta("rework_cycles")),
+      tool_calls: stableNumber(averageDelta("tool_calls")),
+    },
+    pairs,
+    significance,
+    significance_reason: pairs.length < 20 ? "MINIMUM_20_PAIRS_REQUIRED" : null,
   };
 }
