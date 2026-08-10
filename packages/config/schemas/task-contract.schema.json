@@ -37,7 +37,7 @@
     "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "sensitivity": { "enum": ["public", "internal", "confidential", "restricted"] },
     "stringArray": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-    "providerId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" },
+    "providerId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$" },
     "capabilityIdArray": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
     "providerIdArray": { "type": "array", "items": { "$ref": "#/$defs/providerId" }, "uniqueItems": true },
     "sideEffect": { "enum": ["project-file-write", "workspace-file-write", "credential-use", "destructive-action", "paid-external-action", "production-data-write", "external-message", "issue-write", "pull-request-write", "purchase", "external-account-mutation", "deployment", "live-data-write"] },
@@ -53,13 +53,25 @@
     },
     "egressApproval": {
       "type": "object", "additionalProperties": false,
-      "required": ["destination", "content_digest", "approved"],
+      "required": ["destination", "destination_id", "source_aliases", "data_categories", "effective_sensitivity", "disclosed_fields", "purpose", "retention", "further_calls_allowed", "content_digest", "approved", "expires_at"],
       "properties": {
         "destination": { "enum": ["host-model", "mcp-connector", "research-provider", "external-skill", "local-process", "external-api"] },
+        "destination_id": { "$ref": "#/$defs/destinationIdentity" },
+        "provider": { "$ref": "#/$defs/destinationIdentity" },
+        "model": { "$ref": "#/$defs/destinationIdentity" },
+        "service": { "$ref": "#/$defs/destinationIdentity" },
+        "source_aliases": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+        "data_categories": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+        "effective_sensitivity": { "$ref": "#/$defs/sensitivity" },
+        "disclosed_fields": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
+        "purpose": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" },
+        "retention": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" },
+        "further_calls_allowed": { "type": "boolean" },
         "content_digest": { "$ref": "#/$defs/sha256" },
         "approved": { "type": "boolean" },
         "expires_at": { "type": "string", "format": "date-time", "pattern": "Z$" }
       }
-    }
+    },
+    "destinationIdentity": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+-]*$" }
   }
 }

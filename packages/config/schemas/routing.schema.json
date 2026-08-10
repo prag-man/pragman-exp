@@ -27,7 +27,7 @@
   "$defs": {
     "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
     "capabilityId": { "$ref": "#/$defs/slug" },
-    "providerId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" },
+    "providerId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$" },
     "approval": { "type": ["string", "null"], "enum": ["route", "egress", "action", "target-specific", null] },
     "capabilityIdArray": { "type": "array", "items": { "$ref": "#/$defs/capabilityId" }, "uniqueItems": true },
     "providerIdArray": { "type": "array", "items": { "$ref": "#/$defs/providerId" }, "uniqueItems": true },

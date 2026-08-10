@@ -10,7 +10,7 @@
     "id": { "$ref": "#/$defs/providerId" },
     "source": { "$ref": "#/$defs/providerSource" },
     "source_version": { "type": "string", "minLength": 1 },
-    "trust": { "enum": ["bundled", "curated", "workspace-approved", "discovered", "quarantined"] },
+    "trust": { "enum": ["bundled", "curated", "workspace-approved", "discovered"] },
     "capabilities": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
     "host_support": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } },
     "invoke": { "$ref": "#/$defs/invoke" },
@@ -27,7 +27,8 @@
   },
   "$defs": {
     "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
-    "providerId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" },
+    "providerId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "skillId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?$" },
     "providerSource": {
       "oneOf": [
         { "$ref": "#/$defs/slug" },
@@ -43,7 +44,7 @@
       "oneOf": [
         {
           "type": "object", "additionalProperties": false, "required": ["type", "skill_id"],
-          "properties": { "type": { "const": "native-skill" }, "skill_id": { "$ref": "#/$defs/providerId" } }
+          "properties": { "type": { "const": "native-skill" }, "skill_id": { "$ref": "#/$defs/skillId" } }
         },
         {
           "type": "object", "additionalProperties": false, "required": ["type", "template_id"],

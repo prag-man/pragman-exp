@@ -118,7 +118,7 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
 
   const provider = {
     schema_version: 1,
-    id: "builtin-review",
+    id: "pragman:builtin-review",
     source: "bundled",
     source_version: "1.0.0",
     trust: "bundled",
@@ -135,6 +135,8 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
     result_contract: "provider-result",
   };
   assert.equal(ajv.compile(schemas["provider.schema.json"])(provider), true);
+  assert.equal(ajv.compile(schemas["provider.schema.json"])({ ...provider, id: "builtin-review" }), false);
+  assert.equal(ajv.compile(schemas["provider.schema.json"])({ ...provider, trust: "quarantined" }), false);
   assert.equal(ajv.compile(schemas["provider.schema.json"])({
     ...provider,
     id: "gstack:investigate",
@@ -164,7 +166,7 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
     assumptions: [],
     unresolved_conflicts: [],
     capabilities: ["code-review"],
-    providers: ["builtin-review"],
+    providers: ["pragman:builtin-review"],
     provider_sequence_policy: "stop",
     allowed_side_effects: [],
     data_inputs: [],
@@ -179,6 +181,45 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
   assert.equal(validateContract({ ...contract, providers: ["gstack:investigate"] }), true);
   assert.equal(validateContract({ ...contract, capabilities: ["gstack:investigate"] }), false);
   assert.equal(validateContract({ ...contract, raw_private_path: "/Users/example/private" }), false);
+
+  const egressApproval = {
+    destination: "host-model",
+    destination_id: "openai:gpt-5",
+    provider: "openai",
+    model: "gpt-5",
+    source_aliases: ["workspace-primary"],
+    data_categories: ["customer-summary"],
+    effective_sensitivity: "confidential",
+    disclosed_fields: ["customer-summary"],
+    purpose: "Review the requested customer summary",
+    retention: "provider-declared-30-days",
+    further_calls_allowed: false,
+    content_digest: "b".repeat(64),
+    approved: true,
+    expires_at: "2026-08-10T13:00:00Z",
+  };
+  assert.equal(validateContract({ ...contract, egress_approvals: [egressApproval] }), true, JSON.stringify(validateContract.errors));
+  for (const requiredField of [
+    "destination_id",
+    "source_aliases",
+    "data_categories",
+    "effective_sensitivity",
+    "disclosed_fields",
+    "purpose",
+    "retention",
+    "further_calls_allowed",
+    "content_digest",
+    "approved",
+    "expires_at",
+  ]) {
+    const incomplete = { ...egressApproval } as Record<string, unknown>;
+    delete incomplete[requiredField];
+    assert.equal(validateContract({ ...contract, egress_approvals: [incomplete] }), false, requiredField);
+  }
+  assert.equal(validateContract({
+    ...contract,
+    egress_approvals: [{ ...egressApproval, raw_content: "must never be disclosed implicitly" }],
+  }), false);
 
   const validateSession = ajv.compile(schemas["session-event.schema.json"]);
   const sessionEvent = {
@@ -202,6 +243,44 @@ test("provider, task, evidence, session, learning, and change schemas enforce ke
     const schema = schemas[file];
     assert.equal(schema.additionalProperties, false, file);
     assert.ok(schema.required.includes("schema_version"), file);
+  }
+});
+
+test("workspace and project roots accept normalized POSIX and Windows paths only", async () => {
+  const { default: Ajv2020 } = await import("ajv/dist/2020.js");
+  const schemas = Object.fromEntries(await loadSchemas());
+  const ajv = new Ajv2020({ strict: true });
+  const validateWorkspace = ajv.compile(schemas["workspace.schema.json"]);
+  const validateProject = ajv.compile(schemas["project.schema.json"]);
+  const workspace = {
+    schema_version: 1,
+    workspace_id: "primary",
+    name: "Primary",
+    root: "/Users/example/project",
+    context_sources: [],
+  };
+  const project = {
+    schema_version: 1,
+    project_id: "project",
+    workspace: "primary",
+    root: "/Users/example/project",
+  };
+
+  for (const rootPath of ["/Users/example/project", "C:/Users/example/project"]) {
+    assert.equal(validateWorkspace({ ...workspace, root: rootPath }), true, rootPath);
+    assert.equal(validateProject({ ...project, root: rootPath }), true, rootPath);
+  }
+  for (const rootPath of [
+    "relative/project",
+    "/Users/example/../project",
+    "/Users/example/./project",
+    "/Users//example/project",
+    "C://Users/example/project",
+    "C:\\Users\\example\\project",
+    "/Users/example/project/",
+  ]) {
+    assert.equal(validateWorkspace({ ...workspace, root: rootPath }), false, rootPath);
+    assert.equal(validateProject({ ...project, root: rootPath }), false, rootPath);
   }
 });
 
@@ -287,7 +366,7 @@ test("skill events capture privacy-safe local metrics and reject raw content or 
     rework_cycles: 1,
     verification_checks: 3,
     verification_passes: 3,
-    provider: "builtin-review",
+    provider: "pragman:builtin-review",
     ablation_arm: "skill-on",
     source_aliases: ["workspace-primary", "codex-session-1"],
     storage_scope: "local",
@@ -297,5 +376,15 @@ test("skill events capture privacy-safe local metrics and reject raw content or 
   assert.equal(validate(event), true, JSON.stringify(validate.errors));
   for (const forbidden of ["raw_prompt", "raw_output", "secret"]) {
     assert.equal(validate({ ...event, [forbidden]: "must-not-be-stored" }), false, forbidden);
+  }
+  for (const [field, unsafeValue] of [
+    ["skill_version", "x".repeat(129)],
+    ["host_version", "version with whitespace"],
+    ["host_version", "version\nwith-control-text"],
+    ["model", "sk-proj-super-secret-model-value"],
+    ["model_version", "ghp_1234567890abcdefghijklmnopqrstuv"],
+    ["harness_version", "xoxb-1234567890-secret"],
+  ]) {
+    assert.equal(validate({ ...event, [field]: unsafeValue }), false, `${field}: ${unsafeValue}`);
   }
 });

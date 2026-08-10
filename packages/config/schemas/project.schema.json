@@ -9,7 +9,7 @@
     "schema_version": { "const": 1 },
     "project_id": { "$ref": "#/$defs/slug" },
     "workspace": { "$ref": "#/$defs/slug" },
-    "root": { "type": "string", "pattern": "^/", "minLength": 2 },
+    "root": { "$ref": "#/$defs/normalizedAbsolutePath" },
     "product": { "type": "string", "minLength": 1 },
     "additional_workspaces": {
       "type": "array",
@@ -20,6 +20,20 @@
     "context_index": { "type": "string", "default": ".pragman/context-index.yaml", "minLength": 1 }
   },
   "$defs": {
-    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "normalizedAbsolutePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "allOf": [
+        {
+          "anyOf": [
+            { "pattern": "^/(?:[^/\\\\]+/)*[^/\\\\]+$" },
+            { "pattern": "^[A-Za-z]:/(?:[^/\\\\]+/)*[^/\\\\]+$" }
+          ]
+        },
+        { "not": { "pattern": "(?:^|/)\\.{1,2}(?:/|$)" } }
+      ]
+    }
   }
 }

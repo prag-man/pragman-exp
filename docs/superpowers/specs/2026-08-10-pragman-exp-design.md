@@ -823,7 +823,7 @@ These measures are evaluated from local user-controlled data and voluntary quali
 
 ## 23. Normative v1 data contracts
 
-This section is normative. Schemas are published as JSON Schema in `packages/config/schemas/`; YAML files are parsed into the same data model. Unless a schema explicitly allows extension fields, unknown fields are errors. Every persisted record has `schema_version: 1`. IDs are lowercase ASCII slugs for user-authored entities and UUIDv7 values for generated records. Timestamps are RFC 3339 UTC. Paths are stored as normalized absolute paths only in private local state; exported artifacts replace them with stable source aliases.
+This section is normative. Schemas are published as JSON Schema in `packages/config/schemas/`; YAML files are parsed into the same data model. Unless a schema explicitly allows extension fields, unknown fields are errors. Every persisted record has `schema_version: 1`. IDs are lowercase ASCII slugs for user-authored entities and UUIDv7 values for generated records. Provider IDs are `<namespace>:<slug>` and repository sources are `<owner>/<repo>`; these are the explicit exceptions, while other user-authored IDs remain lowercase ASCII slugs. Timestamps are RFC 3339 UTC. Paths are stored as normalized absolute paths only in private local state; exported artifacts replace them with stable source aliases.
 
 ### 23.1 Core records
 

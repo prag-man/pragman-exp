@@ -14,6 +14,16 @@ test("package targets supported Node releases and exposes the pragman binary", a
   assert.equal(packageJson.bin.pragman, "dist/packages/cli/src/index.js");
 });
 
+test("normative ID rules document the provider and repository-source exceptions", async () => {
+  const design = await readFile(
+    new URL("docs/superpowers/specs/2026-08-10-pragman-exp-design.md", root),
+    "utf8",
+  );
+
+  assert.match(design, /Provider IDs are `<namespace>:<slug>`/);
+  assert.match(design, /repository sources are `<owner>\/<repo>`/);
+});
+
 test("pragman --version --json returns the stable automation envelope", () => {
   const result = spawnSync(
     process.execPath,
