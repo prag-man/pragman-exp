@@ -103,3 +103,29 @@ test("different metadata at project and user scope is a blocking shadow conflict
   assert.equal(records.every((entry: { shadowed_by: null }) => entry.shadowed_by === null), true);
 });
 
+test("scan inventories host, plugin, MCP, instruction, and selected-repository metadata without exposing bodies", async () => {
+  const { home, project } = await fixture();
+  const secret = "sk-proj-metadata-body-must-not-leak-123456789";
+  await mkdir(join(home, ".claude", "plugins", "review-suite"), { recursive: true });
+  await mkdir(join(project, ".cursor", "rules"), { recursive: true });
+  await writeFile(join(project, "AGENTS.md"), `Never print ${secret}\n`);
+  await writeFile(join(project, ".cursor", "rules", "product.mdc"), `private rule ${secret}\n`);
+  await writeFile(join(project, ".mcp.json"), JSON.stringify({
+    mcpServers: { linear: { command: "private-command", env: { API_KEY: secret } } },
+  }));
+
+  const result = invoke(home, ["scan", "--project-root", project]);
+  assert.equal(result.status, 0, result.stderr);
+  const data = JSON.parse(result.stdout).data;
+  assert.equal(data.environment.hosts.some((host: { host: string; detected: boolean }) => host.host === "claude-code" && host.detected), true);
+  assert.deepEqual(data.environment.plugins.map((plugin: { plugin_id: string }) => plugin.plugin_id), ["review-suite"]);
+  assert.deepEqual(data.environment.mcp_servers.map((server: { server_id: string }) => server.server_id), ["linear"]);
+  assert.deepEqual(data.environment.instruction_files.map((file: { path_alias: string }) => file.path_alias).sort(), [
+    "cursor:project:rule:product-mdc",
+    "project:agents-md",
+  ]);
+  assert.deepEqual(data.environment.repositories, [{ path_alias: "selected-project", selected: true }]);
+  assert.equal(result.stdout.includes(secret), false);
+  assert.equal(result.stdout.includes(project), false);
+  assert.equal(result.stdout.includes("private-command"), false);
+});
