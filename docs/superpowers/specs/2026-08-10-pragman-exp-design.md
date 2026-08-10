@@ -209,6 +209,8 @@ pragman events summary
 pragman events rebuild
 pragman events export
 pragman events purge
+pragman events candidates list
+pragman events candidates decide
 ```
 
 Commands support machine-readable JSON output alongside concise human output. Mutating commands support preview mode. Invalid configuration fails closed with an actionable error and does not partially write files.

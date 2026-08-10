@@ -46,6 +46,8 @@
 
 ## Task 2: `pragman-workspace` vertical unit
 
+Before this task, complete the separately reviewed foundational event plan at `docs/superpowers/plans/2026-08-10-pragman-skill-events.md`. All subsequent skills and provider adapters instrument through that package; event failures remain non-blocking.
+
 **Files:**
 - Create: `packages/config/src/{types,paths,loader,merge,atomic-write,changes,index}.ts`
 - Create: `packages/cli/src/commands/workspace.ts`
@@ -139,6 +141,7 @@
 
 - [ ] Write failing tests for stable IDs, selection, root/symlink containment, limits, unknown/corrupt formats, 10% threshold, prompt injection, secret corpus, Cursor Markdown, retention/purge, preview/apply/rollback; verify RED.
 - [ ] Implement bounded local parsing, normalized events, quarantine/partial success, redacted evidence, metrics, sessions/tune/change/history commands.
+- [ ] Consume only user-approved `eval-candidate` records from the foundational skill-events package; preview the sanitized corpus addition, rerun the target skill's evaluations, and require approval again before applying it. Pending candidates never write a corpus.
 - [ ] Baseline-test mixed-host history, missing intent, injected transcript, corrupt source, and proposed tuning; capture log-only diagnosis and unapproved edits.
 - [ ] Initialize/write privacy selection, ingestion, focused questioning, symptom/root-cause separation, exact diff, eval, approval, apply, rollback, and separate sanitized upstream guidance.
 - [ ] Forward-test every baseline/security scenario, run tests/validation, and commit: `feat: add pragman unfck`.

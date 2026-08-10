@@ -8,11 +8,13 @@
 
 ## 1. Decision
 
-Pragman will use a local, content-free measurement system with three distinct records:
+Pragman will use a local, content-free measurement system with five distinct records:
 
 1. Immutable skill lifecycle events
 2. Immutable scores attached after an outcome is known
 3. Rebuildable daily and weekly rollups
+4. Immutable real-failure evaluation candidates
+5. Immutable candidate approval decisions
 
 This makes the skill collection evidence-driven without adding a hosted service, background daemon, or transcript store. The system measures both routing quality and outcome lift. It never changes a skill, provider preference, or workspace automatically.
 
@@ -62,12 +64,14 @@ The private state root contains:
 ~/.pragman/state/events/
   skill-events/YYYY-MM-DD.jsonl
   scores/YYYY-MM-DD.jsonl
+  eval-candidates/YYYY-MM-DD.jsonl
+  candidate-approvals/YYYY-MM-DD.jsonl
   rollups/daily/YYYY-MM-DD.json
   rollups/weekly/YYYY-Www.json
   quarantine/
 ```
 
-JSONL files are append-only. Each line is a complete validated record. Durable event commands use the existing state-root advisory lock, append one canonical record through a file handle opened with append semantics, and sync it before releasing the lock. Best-effort instrumentation follows the bounded path in Section 10. A malformed or truncated tail is quarantined on the next read; earlier valid lines remain usable.
+JSONL files are append-only. Each line is a complete validated record. Durable event, score, candidate, and approval commands use the existing state-root advisory lock, append one canonical record through a file handle opened with append semantics, and sync it before releasing the lock. Best-effort instrumentation follows the bounded path in Section 10. A malformed or truncated tail is quarantined on the next read; earlier valid lines remain usable.
 
 Rollups inside the raw-retention horizon are derived state. `pragman events rebuild` can reproduce them from retained events and scores. Before a raw day expires, retention rebuilds its daily rollup, verifies the source count and canonical source digest, marks it `sealed`, and only then purges that day's raw records. Sealed rollups are durable compacted history rather than rebuildable cache; rebuild verifies and preserves them. Weekly rollups are deterministically recomputed from daily rollups, including sealed days. No command edits or deletes an individual historical event.
 
@@ -132,8 +136,35 @@ Every scored metric has a versioned public definition under `evals/metrics/` and
 - `pass_rule` using `eq`, `gte`, `lte`, or inclusive `between`
 - `eligible_score_sources`: a non-empty subset of `deterministic`, `user`, and `llm-judge`
 - `eligible_verification_codes`: the bounded outcome codes allowed in verified-success denominators, or an empty list when the metric does not support verified success
+- `lifecycle_policy`: deterministic recommendation thresholds in the metric's published units
 
-Category definitions assign each category a stable ID, ordinal rank, and pass/fail value. A target metric declares its target or inclusive target range. Schema validation rejects a score outside the domain, from an ineligible source, or against an unknown definition digest. Reliability and regression use the definition's pass rule and direction; implementations never infer them from the metric name.
+Boolean definitions assign each value a utility from 0 through 1. Category definitions assign each category a stable ID, ordinal rank, pass/fail value, and utility from 0 through 1. A target numeric metric declares its target or inclusive target range. Schema validation rejects a score outside the domain, from an ineligible source, or against an unknown definition digest. Reliability and regression use the definition's pass rule and normalized utility; implementations never infer them from the metric name.
+
+Every value maps deterministically to utility in `[0,1]`, where higher is always better:
+
+- `maximize` number: `(value - min) / (max - min)`
+- `minimize` number: `(max - value) / (max - min)`
+- point-target number: `1 - min(1, abs(value - target) / max(target - min, max - target))`
+- inclusive-range target: utility 1 inside; below it use `1 - min(1, (target_min - value) / (target_min - min))`; above it use `1 - min(1, (value - target_max) / (max - target_max))`
+- boolean/category: the definition's explicit utility for that value
+
+Numeric domains require `max > min`; target denominators must be positive. Ablation reports raw metric deltas for display and `utility_lift = mean(skill-on utility) - mean(skill-off utility)`. All lifecycle policies use utility/pass-rate/efficiency values, never raw direction-dependent lift.
+
+`lifecycle_policy` requires:
+
+- `minimum_trials_per_arm` from 2 through 20
+- `minimum_comparable_environments` from 1 through 10
+- `minimum_pass_rate` from 0 through 1
+- `regression_tolerance`, `material_lift`, and `non_inferiority_margin` from 0 through 1 in normalized utility units
+- `efficiency_materiality` with non-negative thresholds for `duration_ms`, `retries`, `rework_cycles`, and `tool_calls`
+
+Recommendations apply these values exactly: regression means comparable current mean utility declines beyond `regression_tolerance`; drift means an environment/digest changed and has fewer than `minimum_trials_per_arm` current trials; improve means pass rate is below `minimum_pass_rate`; retire requires a capability skill, at least `minimum_comparable_environments`, utility lift no greater than `non_inferiority_margin`, and no efficiency improvement exceeding its materiality threshold in every environment; retain preference requires preference-adherence utility lift of at least `material_lift`; reactivate requires a previously retired capability and current utility lift greater than `material_lift`. Insufficient or incomparable evidence produces no lifecycle recommendation except drift.
+
+### 6.2 Real-failure candidate approval
+
+An observed failure may create a content-free `eval-candidate`. It requires `schema_version`, UUIDv7 `candidate_id`, timestamp, target `skill_id`/`skill_digest`/`corpus_id`, one or more source-event digests, optional recommendation digest, bounded slug `failure_codes`, redacted-artifact alias/digest, `approval_status=pending`, `storage_scope=local`, and `append_only=true`. Unknown fields and arbitrary prompt/output/transcript text are rejected. It cannot write a corpus.
+
+Approval is a separate immutable `eval-candidate-approval` record requiring `schema_version`, UUIDv7 `approval_id`, timestamp, candidate ID/digest, decision `approved` or `rejected`, `approval_source=user`, reviewed redacted-artifact digest, `storage_scope=local`, and `append_only=true`. A candidate has at most one decision. Exact duplicate IDs/records are idempotent; divergent duplicate IDs, missing candidates, a changed candidate/artifact digest, or a second/conflicting decision are quarantined. Even an approved candidate grants only eligibility for the later unfck preview/eval/apply flow, not direct corpus mutation.
 
 ## 7. Metrics
 
@@ -162,6 +193,7 @@ Production invocations normally have `trigger_expected=null`; they do not enter 
 An ablation comparison requires the same `eval_id`, `eval_corpus_digest`, `trial_policy_digest`, case and paired-trial IDs, skill digest under test, provider and provider digest, host and host version, model and model version, harness version, metric definition digest, grader/grader version, and rubric digest for both arms. Both arms record the tested skill's provider record and digest; `skill-off` marks that skill as the omitted intervention rather than replacing its provider identity with an unrelated baseline. Pragman reports:
 
 - Outcome lift: mean skill-on score minus mean skill-off score.
+- Direction-normalized utility lift.
 - Verified-success lift.
 - Duration, retries, rework, and tool-call deltas.
 - Confidence interval or, for fewer than 20 paired trials, the raw paired results without a significance claim.
@@ -192,6 +224,7 @@ Defaults:
 | Record | Retention |
 | --- | --- |
 | Raw skill events and complete score chains | 180 days from invocation |
+| Evaluation candidates and approval decisions | 180 days from candidate creation |
 | Daily rollups | 2 years |
 | Weekly rollups | until user purge |
 | Quarantined invalid records | 30 days |
@@ -199,9 +232,9 @@ Defaults:
 
 Users may disable local events, shorten retention, rebuild rollups, preview a purge, or purge all records. Disabling measurement does not prevent any skill from running. Purges are explicit destructive operations and report the exact time range and record classes.
 
-Automatic expiry follows compact-before-delete: seal and verify the daily rollup, recompute the affected weekly rollup, then remove the raw invocation cohorts. If sealing or verification fails, raw records remain and doctor reports retention debt. A user-requested purge may deliberately remove both raw and compacted history after its preview; it does not pretend the deleted period remains rebuildable.
+Automatic expiry follows compact-before-delete: seal and verify the daily rollup, recompute the affected weekly rollup, then remove the raw invocation cohorts. Candidate expiry removes the candidate and its complete decision set together; no rollup is required. If sealing or verification fails, raw records remain and doctor reports retention debt. A user-requested purge may deliberately remove raw, candidate/approval, and/or compacted history after its preview; it does not pretend the deleted period remains rebuildable.
 
-`pragman events export` defaults to rollups. Exporting raw content-free events requires a second explicit choice and preview. Session IDs, route IDs, source aliases, and invocation IDs are omitted or replaced with export-local cohort IDs. The export includes its schema version and aggregation policy.
+`pragman events export` defaults to rollups. Exporting raw content-free events requires a second explicit choice and preview. Session IDs, route IDs, source aliases, and invocation IDs are omitted or replaced with export-local cohort IDs. Evaluation candidates, artifact aliases/digests, and approval decisions are never exported in v1. The export includes its schema version and aggregation policy.
 
 ## 10. Instrumentation
 
@@ -232,6 +265,8 @@ pragman events summary
 pragman events rebuild
 pragman events export
 pragman events purge
+pragman events candidates list
+pragman events candidates decide
 pragman eval run
 pragman eval compare
 ```
@@ -265,6 +300,7 @@ A skill change may merge when:
 - Best-effort instrumentation returns inside its bounded deadline under lock and append stalls, while durable event commands preserve sync semantics.
 - Delayed and corrected scores preserve history and rollups select the latest valid correction.
 - Metric definitions normatively define domains, direction, pass rules, and eligible verifiers.
+- Metric lifecycle policies normatively define recommendation evidence and materiality thresholds.
 - Skill-on/off comparison rejects mismatched corpora, environments, graders, or trial policies.
 - Precision/recall exclude production cases whose expectation is unknown.
 - Summaries expose denominators, observation coverage, incomplete lifecycles, and cohort dimensions.
@@ -272,6 +308,7 @@ A skill change may merge when:
 - Export is local, previewed, aggregate-first, and contains no private identifiers or content.
 - Retention seals and verifies rollups before raw expiry; rebuild preserves sealed history, and purge behavior is deterministic and test-covered.
 - Analyze/unfck recommendations remain advisory until preview, evaluation, and user approval.
+- Real-failure candidates require an immutable digest-bound user decision and still cannot write a corpus directly.
 - At least one end-to-end fixture demonstrates: route → invoke → complete → verify → score → roll up → ablation comparison → improvement recommendation.
 
 ## 14. Research basis
