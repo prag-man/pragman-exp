@@ -19,7 +19,7 @@ async function fixture() {
   await mkdir(sessions);
   await writeFile(join(sessions, "session.jsonl"), [
     { timestamp: "2026-08-10T10:00:00.000Z", type: "session_meta", payload: { id: "demo", version: "1" } },
-    { timestamp: "2026-08-10T10:00:01.000Z", type: "response_item", payload: { role: "user", content: "api_key=secret-1234567890 please fix it" } },
+    { timestamp: "2026-08-10T10:00:01.000Z", type: "response_item", payload: { type: "message", role: "user", content: "api_key=secret-1234567890 please fix it" } },
     { timestamp: "2026-08-10T10:00:02.000Z", type: "event_msg", payload: { type: "context_compacted" } },
   ].map(JSON.stringify).join("\n"));
   return { root, sessions };
@@ -41,9 +41,24 @@ test("sessions scan is explicit, bounded, redacted, and path safe", async () => 
   const data = JSON.parse(result.stdout).data;
   assert.equal(data.sessions_parsed, 1);
   assert.equal(data.metrics.compaction_count, 1);
+  assert.equal(data.excerpt_release.required, true);
+  assert.equal(data.excerpt_release.released, false);
+  assert.deepEqual(data.excerpts, []);
   const serialized = JSON.stringify(data);
   assert.equal(serialized.includes(sessions), false);
   assert.equal(serialized.includes("secret-1234567890"), false);
+
+  const releasedResult = invoke(root, ["sessions", "scan", "--apply", data.excerpt_release.preview_digest], selection(sessions));
+  assert.equal(releasedResult.status, 0, releasedResult.stderr);
+  const released = JSON.parse(releasedResult.stdout).data;
+  assert.equal(released.excerpt_release.released, true);
+  assert.equal(released.excerpts.length, 1);
+  assert.equal(JSON.stringify(released).includes("secret-1234567890"), false);
+  assert.equal(invoke(root, ["sessions", "scan", "--apply", "0".repeat(64)], selection(sessions)).status, 5);
+
+  const source = join(sessions, "session.jsonl");
+  await writeFile(source, (await readFile(source, "utf8")).replace("please fix it", "please ship it"));
+  assert.equal(invoke(root, ["sessions", "scan", "--apply", data.excerpt_release.preview_digest], selection(sessions)).status, 5);
 });
 
 test("sessions analyze asks for missing intent/context and never authorizes mutation", async () => {

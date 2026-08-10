@@ -32,7 +32,6 @@ export interface SessionSelection {
   content_categories: SessionContentCategory[];
   privacy_depth: SessionPrivacyDepth;
   limits?: Partial<SessionLimits>;
-  override_preview_approved?: boolean;
 }
 
 export interface SessionProvenance {
@@ -113,7 +112,7 @@ export interface ParsedSession {
 export interface ParseSessionOptions {
   source_alias: string;
   project_alias: string;
-  selection: Omit<SessionSelection, "sources" | "limits" | "override_preview_approved">;
+  selection: Omit<SessionSelection, "sources" | "limits">;
   format_version?: string;
   best_effort?: boolean;
   limits?: SessionLimits;
@@ -138,6 +137,12 @@ export interface SessionScanReport {
   apply_allowed: boolean;
   events: NormalizedSessionEvent[];
   excerpts: RedactedSessionExcerpt[];
+  excerpt_release: {
+    required: boolean;
+    released: boolean;
+    preview_digest: string | null;
+    destination: "command-output";
+  };
   quarantine: SessionIssue[];
   warnings: SessionIssue[];
   metrics: SessionMetrics;

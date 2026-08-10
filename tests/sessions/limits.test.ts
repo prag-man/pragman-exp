@@ -14,16 +14,15 @@ test("session limits use conservative documented defaults", () => {
   });
 });
 
-test("limit overrides require an explicit reviewed preview", () => {
+test("v1 never accepts self-asserted raised session limits", () => {
   assert.throws(
     () => resolveSessionLimits({ maximum_file_bytes: DEFAULT_SESSION_LIMITS.maximum_file_bytes + 1 }),
-    (error: unknown) => (error as { code?: string }).code === "LIMIT_OVERRIDE_REQUIRES_PREVIEW",
+    (error: unknown) => (error as { code?: string }).code === "LIMIT_OVERRIDE_UNSUPPORTED",
   );
-  const limits = resolveSessionLimits(
-    { maximum_file_bytes: DEFAULT_SESSION_LIMITS.maximum_file_bytes + 1 },
-    { override_preview_approved: true },
+  assert.throws(
+    () => resolveSessionLimits({ maximum_file_bytes: DEFAULT_SESSION_LIMITS.maximum_file_bytes + 1 }),
+    (error: unknown) => (error as { code?: string }).code === "LIMIT_OVERRIDE_UNSUPPORTED",
   );
-  assert.equal(limits.maximum_file_bytes, DEFAULT_SESSION_LIMITS.maximum_file_bytes + 1);
 });
 
 test("selection requires source, UTC time range, project, categories, and privacy depth", () => {
