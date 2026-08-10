@@ -11,6 +11,7 @@ import { applyChange, contentDigest, ConfigError, normalizeAbsolutePath, persona
 import type { CliArguments } from "../args.ts";
 import { errorEnvelope, EXIT_CODES, successEnvelope } from "../envelope.ts";
 import type { CommandExecution, CommandIo } from "./events.ts";
+import { listTuneChanges, rollbackTuneChange } from "./tune.ts";
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, removeAdditional: false, coerceTypes: false });
 const validators: Record<ChangeTarget, ValidateFunction> = {
@@ -101,12 +102,39 @@ export async function executeChangesCommand(arguments_: CliArguments, io: Comman
   try {
     if (command === "changes.list") {
       const records = await journal(arguments_);
-      return { exitCode: EXIT_CODES.success, envelope: successEnvelope(command, { changes: records }), human: `${records.length} change records.`, stderr: false };
+      const tuneJournal = await listTuneChanges(stateRoot(arguments_));
+      const rolledBack = new Set(tuneJournal.flatMap((record) =>
+        record.record_type === "tune-rollback" && typeof record.rolled_back_change_id === "string" ? [record.rolled_back_change_id] : []));
+      const tuneRecords = tuneJournal.flatMap((record) =>
+        record.record_type === "tune-apply"
+          && typeof record.change_id === "string" && typeof record.candidate_id === "string"
+          && typeof record.target_alias === "string" && typeof record.applied_at === "string"
+          ? [{
+              change_id: record.change_id,
+              candidate_id: record.candidate_id,
+              target_alias: record.target_alias,
+              applied_at: record.applied_at,
+              rollback: { available: true, rolled_back: rolledBack.has(record.change_id) },
+            }]
+          : []);
+      return { exitCode: EXIT_CODES.success, envelope: successEnvelope(command, { changes: records, tune_changes: tuneRecords }), human: `${records.length + tuneRecords.length} change records.`, stderr: false };
     }
     if (command === "changes.rollback") {
       if (!arguments_.change) throw Object.assign(new Error("--change is required"), { code: "NEEDS_INPUT" });
       const applied = (await journal(arguments_)).find((record) => record.change_id === arguments_.change);
-      if (!applied) throw new ConfigError("NOT_FOUND", "Change record was not found");
+      if (!applied) {
+        const result = await rollbackTuneChange({
+          personalRoot: stateRoot(arguments_),
+          changeId: arguments_.change,
+          ...(arguments_.applyDigest ? { applyDigest: arguments_.applyDigest } : {}),
+        });
+        return {
+          exitCode: EXIT_CODES.success,
+          envelope: successEnvelope(command, result),
+          human: result.mutated ? `Rolled back ${arguments_.change}.` : `Preview rollback ${arguments_.change}; apply digest ${String(result.preview_digest)}.`,
+          stderr: false,
+        };
+      }
       const target = targetPath(arguments_, applied.target, applied.target_id);
       const current = await readFile(target);
       const previewDigest = contentDigest(JSON.stringify({ change_id: applied.change_id, current: contentDigest(current), snapshot: applied.rollback.snapshot_ref }));

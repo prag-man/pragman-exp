@@ -14,6 +14,8 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const EVIDENCE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SECRET = /(?:sk-(?:proj-)?[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN [A-Z ]+PRIVATE KEY-----)/;
+const MAX_TUNE_JOURNAL_BYTES = 10 * 1024 * 1024;
+const MAX_TUNE_RECORDS = 10_000;
 
 interface TuneInput {
   candidate_id: string;
@@ -39,8 +41,9 @@ function failure(error: unknown): CommandExecution {
   const message = error instanceof Error ? error.message : "Tune failed";
   const exitCode = code === "NEEDS_INPUT" ? EXIT_CODES.needsInput
     : code === "STALE_PREVIEW" || code === "PRIVACY_DENIED" || code === "EVALUATION_FAILED" ? EXIT_CODES.denied
+      : code === "TEMPORARY_FAILURE" ? EXIT_CODES.temporary
       : code === "INTERNAL" ? EXIT_CODES.internal : EXIT_CODES.invalid;
-  return { exitCode, envelope: errorEnvelope("tune", code, message), human: message, stderr: true };
+  return { exitCode, envelope: errorEnvelope("tune", code, message, null, code === "TEMPORARY_FAILURE"), human: message, stderr: true };
 }
 
 async function readInput(arguments_: CliArguments, io: CommandIo): Promise<TuneInput> {
@@ -188,6 +191,104 @@ async function appendTuneJournal(root: string, record: Record<string, unknown>):
   await atomicWrite(path, `${current.bytes}${canonicalJson(record)}\n`);
 }
 
+export async function listTuneChanges(personalRoot: string): Promise<Record<string, unknown>[]> {
+  const root = normalizeAbsolutePath(personalRoot);
+  const path = resolveContainedPath(root, join(root, "history", "tune-changes.jsonl"));
+  const current = await readRegularFile(path);
+  if (Buffer.byteLength(current.bytes) > MAX_TUNE_JOURNAL_BYTES) {
+    throw Object.assign(new Error("Tune change journal exceeds the bounded read limit"), { code: "PRIVACY_DENIED" });
+  }
+  const lines = current.bytes.split("\n").filter(Boolean);
+  if (lines.length > MAX_TUNE_RECORDS) {
+    throw Object.assign(new Error("Tune change journal exceeds the record limit"), { code: "PRIVACY_DENIED" });
+  }
+  try {
+    return lines.map((line) => {
+      const value = JSON.parse(line) as unknown;
+      if (!object(value)) throw new TypeError("invalid-record");
+      return value;
+    });
+  } catch {
+    throw Object.assign(new Error("Tune change journal is invalid"), { code: "PRIVACY_DENIED" });
+  }
+}
+
+export async function rollbackTuneChange(options: {
+  personalRoot: string;
+  changeId: string;
+  applyDigest?: string;
+}): Promise<Record<string, unknown>> {
+  const root = normalizeAbsolutePath(options.personalRoot);
+  const records = await listTuneChanges(root);
+  const applied = records.find((record) => record.change_id === options.changeId && record.record_type === "tune-apply");
+  if (!applied || typeof applied.target_alias !== "string" || typeof applied.preview_digest !== "string"
+    || typeof applied.base_digest !== "string" || typeof applied.base_existed !== "boolean"
+    || !object(applied.rollback) || applied.rollback.snapshot_ref !== applied.base_digest) {
+    throw Object.assign(new Error("Tune change record was not found or is invalid"), { code: "NOT_FOUND" });
+  }
+  if (records.some((record) => record.record_type === "tune-rollback" && record.rolled_back_change_id === options.changeId)) {
+    throw Object.assign(new Error("Tune change has already been rolled back"), { code: "STALE_PREVIEW" });
+  }
+  const skillAlias = applied.target_alias.slice("private-overlay:".length);
+  if (!applied.target_alias.startsWith("private-overlay:") || !/^[a-z0-9-]+$/.test(skillAlias)) {
+    throw Object.assign(new Error("Tune change target is unsafe"), { code: "PRIVACY_DENIED" });
+  }
+  const target = resolveContainedPath(root, join(root, "overlays", skillAlias, "eval-candidates.jsonl"));
+  const current = await readRegularFile(target);
+  const snapshotPath = resolveContainedPath(root, join(root, "history", "snapshots", `${applied.base_digest}.bin`));
+  const snapshot = await readRegularFile(snapshotPath);
+  if (!current.existed || contentDigest(current.bytes) !== applied.preview_digest
+    || !snapshot.existed || contentDigest(snapshot.bytes) !== applied.base_digest) {
+    throw Object.assign(new Error("Tune overlay or rollback snapshot changed after application"), { code: "STALE_PREVIEW" });
+  }
+  const previewDigest = contentDigest(canonicalJson({
+    command: "changes.rollback:tune",
+    change_id: options.changeId,
+    current_digest: contentDigest(current.bytes),
+    snapshot_digest: contentDigest(snapshot.bytes),
+    base_existed: applied.base_existed,
+  }));
+  const preview = {
+    change_id: options.changeId,
+    target: "private-overlay",
+    target_id: skillAlias,
+    preview_digest: previewDigest,
+    approval_classes: ["local-config-write"],
+    mutated: false,
+  };
+  if (!options.applyDigest) return preview;
+  if (options.applyDigest !== previewDigest) {
+    throw Object.assign(new Error("Tune rollback approval digest is stale"), { code: "STALE_PREVIEW" });
+  }
+  return withLock(root, async () => {
+    const latest = await readRegularFile(target);
+    const latestSnapshot = await readRegularFile(snapshotPath);
+    if (!latest.existed || contentDigest(latest.bytes) !== applied.preview_digest
+      || !latestSnapshot.existed || contentDigest(latestSnapshot.bytes) !== applied.base_digest) {
+      throw Object.assign(new Error("Tune overlay changed after rollback preview"), { code: "STALE_PREVIEW" });
+    }
+    if (applied.base_existed) await atomicWrite(target, latestSnapshot.bytes);
+    else await rm(target, { force: true });
+    const rollbackId = `rollback-${options.changeId}`;
+    const rollbackRecord = {
+      schema_version: 1,
+      record_type: "tune-rollback",
+      change_id: rollbackId,
+      rolled_back_change_id: options.changeId,
+      target_alias: applied.target_alias,
+      restored_digest: applied.base_digest,
+      applied_at: new Date().toISOString(),
+    };
+    try {
+      await appendTuneJournal(root, rollbackRecord);
+    } catch (error) {
+      await atomicWrite(target, latest.bytes);
+      throw error;
+    }
+    return { ...preview, change_id: rollbackId, rolled_back_change_id: options.changeId, mutated: true };
+  });
+}
+
 export async function executeTuneCommand(arguments_: CliArguments, io: CommandIo): Promise<CommandExecution> {
   try {
     const input = await readInput(arguments_, io);
@@ -227,11 +328,12 @@ export async function executeTuneCommand(arguments_: CliArguments, io: CommandIo
     const next = `${current.bytes}${canonicalJson(entry)}\n`;
     const previewDigest = contentDigest(next);
     const baseDigest = contentDigest(current.bytes);
+    const changeId = `tune-${candidate.candidate_id}`;
     const preview = {
       mutated: false, target_alias: `private-overlay:${skillAlias}`, candidate_id: candidate.candidate_id,
       candidate_digest: input.candidate_digest, scenario: input.scenario,
       evaluation: { status: "COMPARABLE", passed: true, evidence_id: verified.artifact.evidence_id, artifact_digest: verified.artifactDigest },
-      base_digest: baseDigest, preview_digest: previewDigest, approval_classes: ["private-overlay-write"],
+      change_id: changeId, base_digest: baseDigest, preview_digest: previewDigest, approval_classes: ["private-overlay-write"],
     };
     if (!arguments_.applyDigest) {
       return { exitCode: EXIT_CODES.success, envelope: successEnvelope("tune", preview), human: `Tuning preview ${previewDigest}; a second approval is required.`, stderr: false };
@@ -249,7 +351,8 @@ export async function executeTuneCommand(arguments_: CliArguments, io: CommandIo
       const appliedAt = new Date().toISOString();
       const record = {
         schema_version: 1,
-        change_id: `tune-${candidate.candidate_id}`,
+        record_type: "tune-apply",
+        change_id: changeId,
         candidate_id: candidate.candidate_id,
         candidate_digest: input.candidate_digest,
         target_alias: `private-overlay:${skillAlias}`,
