@@ -74,18 +74,14 @@ function collectStrings(value, result = []) {
 }
 
 function observableText(output) {
-  const strings = [output];
+  const strings = [];
   for (const line of output.split(/\r?\n/)) {
     try {
       collectStrings(JSON.parse(line), strings);
     } catch {
-      // Host CLIs may mix a non-JSON version/status line with structured output.
+      // Preserve plain host text, but do not mix raw JSON wrappers into the marker search.
+      strings.push(line);
     }
-  }
-  try {
-    collectStrings(JSON.parse(output), strings);
-  } catch {
-    // JSONL and plain text were already handled above.
   }
   return strings.join("\n");
 }
@@ -195,4 +191,3 @@ async function main(argv) {
 
 const isMain = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
 if (isMain) process.exitCode = await main(process.argv.slice(2));
-

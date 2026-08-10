@@ -36,6 +36,10 @@ test("live host output must contain the exact content-free invariants", () => {
     assertSmokeInvariants('status PRAGMAN_SMOKE {"lane":"fast","interview":false,"egress":false,"writes":false}'),
     { lane: "fast", interview: false, egress: false, writes: false },
   );
+  assert.deepEqual(
+    assertSmokeInvariants('{"type":"item.completed","item":{"type":"agent_message","text":"PRAGMAN_SMOKE {\\"lane\\":\\"fast\\",\\"interview\\":false,\\"egress\\":false,\\"writes\\":false}"}}'),
+    { lane: "fast", interview: false, egress: false, writes: false },
+  );
   assert.throws(() => assertSmokeInvariants("completed successfully"), /missing PRAGMAN_SMOKE invariants/i);
   assert.throws(
     () => assertSmokeInvariants('PRAGMAN_SMOKE {"lane":"deep","interview":false,"egress":false,"writes":false}'),
