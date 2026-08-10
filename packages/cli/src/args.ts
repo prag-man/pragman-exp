@@ -6,6 +6,7 @@ export type CliCommand =
   | "eval.run" | "eval.compare"
   | "route" | "providers.list" | "providers.inspect"
   | "changes.list" | "changes.preview" | "changes.apply" | "changes.rollback" | "history.purge"
+  | "sessions.scan" | "sessions.analyze" | "sessions.purge"
   | "workspace.add" | "workspace.edit" | "workspace.list" | "workspace.link" | "workspace.unlink" | "workspace.validate";
 
 export interface CliArguments {
@@ -51,6 +52,7 @@ function commandFrom(positionals: readonly string[], version: boolean, help: boo
   const commands = new Set<CliCommand>([
     "init", "scan", "doctor", "route", "providers.list", "providers.inspect",
     "changes.list", "changes.preview", "changes.apply", "changes.rollback", "history.purge",
+    "sessions.scan", "sessions.analyze", "sessions.purge",
     "events.record", "events.score", "events.list", "events.summary", "events.rebuild", "events.export",
     "events.purge", "events.candidates.list", "events.candidates.decide", "eval.run", "eval.compare",
     "workspace.add", "workspace.edit", "workspace.list", "workspace.link", "workspace.unlink", "workspace.validate",
