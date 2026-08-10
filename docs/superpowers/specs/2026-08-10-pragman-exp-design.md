@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-10
 
-**Status:** Independently reviewed; awaiting written-spec approval
+**Status:** Approved; implementation in progress
 
 **Repository:** `https://github.com/prag-man/pragman-exp`
 
@@ -202,6 +202,13 @@ pragman changes apply
 pragman changes rollback
 pragman history purge
 pragman eval
+pragman events record
+pragman events score
+pragman events list
+pragman events summary
+pragman events rebuild
+pragman events export
+pragman events purge
 ```
 
 Commands support machine-readable JSON output alongside concise human output. Mutating commands support preview mode. Invalid configuration fails closed with an actionable error and does not partially write files.
@@ -716,6 +723,8 @@ Each new or modified skill follows behavior-first development:
 
 ### 17.2 Local outcome metrics
 
+The normative event, score, rollup, ablation, and lifecycle contracts are defined in `docs/superpowers/specs/2026-08-10-pragman-skill-events-design.md`. That additive spec governs where its narrower requirements differ from this section.
+
 - Route acceptance or override
 - Number of questions and whether answers changed the route
 - Time to first useful action
@@ -773,15 +782,16 @@ The private workspace is not stored in the public `pragman-exp` repository.
 Implementation proceeds in strict vertical units:
 
 1. Repository foundation, schemas, CLI shell, test harness, and security baseline
-2. `pragman-workspace`
-3. `pragman-init`
-4. Provider registry and `pragman-router`
-5. `pragman-research`
-6. `pragman-shape`
-7. `pragman-prototype`
-8. `pragman-analyze`
-9. Session adapters and `pragman-unfck`
-10. Cross-host validation, security review, npm release, GitHub release, and `skills.sh` publication
+2. Local skill events, scores, rollups, and evaluation comparison
+3. `pragman-workspace`
+4. `pragman-init`
+5. Provider registry and `pragman-router`
+6. `pragman-research`
+7. `pragman-shape`
+8. `pragman-prototype`
+9. `pragman-analyze`
+10. Session adapters and `pragman-unfck`
+11. Cross-host validation, security review, npm release, GitHub release, and `skills.sh` publication
 
 Each public unit receives its own behavior scenarios and must pass deterministic and behavioral gates before the next public unit begins. Implementation planning must preserve these boundaries and may split a unit further; it may not combine units into one unverified batch.
 
@@ -796,6 +806,7 @@ V1 is complete only when:
 - Personal, multiple workspace, and project configuration layers work with documented precedence.
 - Init scans supported hosts and produces an approved operating map without reading secrets.
 - Router selects appropriate lanes/providers across the golden scenario suite and avoids unnecessary questions on fast tasks.
+- Local skill events, delayed scores, rollups, and skill-on/off comparisons pass the additive skill-events acceptance criteria.
 - Curated adapters exist for Pragman, gstack, Compound Engineering, and Superpowers.
 - Research, shaping, prototype, and analysis skills pass their behavioral scenarios.
 - Codex, Claude Code, and Cursor sessions can be safely scanned through supported adapters.
@@ -829,7 +840,7 @@ This section is normative. Schemas are published as JSON Schema in `packages/con
 
 | Record | Required fields | Optional fields and defaults | Unknown fields |
 | --- | --- | --- | --- |
-| Personal config | `schema_version`, `privacy`, `updates`, `output` | `telemetry.enabled=false`, `routing.default_lane=adaptive` | reject |
+| Personal config | `schema_version`, `privacy`, `updates`, `output` | `telemetry.enabled=false`, `measurement.local_events=true`, `routing.default_lane=adaptive` | reject |
 | Profile | `schema_version`, `profile_id`, `roles`, `responsibilities` | `preferences={}`, `prohibitions=[]`, `authority=[]` | reject |
 | Workspace | `schema_version`, `workspace_id`, `name`, `root`, `context_sources` | `description`, `tools=[]`, `workflows=[]`, `sensitivity=internal` | reject |
 | Project manifest | `schema_version`, `project_id`, `workspace`, `root` | `product`, `additional_workspaces=[]`, `context_index=.pragman/context-index.yaml` | reject |
