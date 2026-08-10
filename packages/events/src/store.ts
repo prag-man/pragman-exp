@@ -35,6 +35,29 @@ interface MutationLock {
   release(): Promise<void>;
 }
 
+export type BestEffortReason = "VALIDATION_FAILED" | "LOCK_TIMEOUT" | "DEADLINE_EXCEEDED" | "IO_ERROR";
+
+export interface BestEffortLock {
+  release(): Promise<void>;
+}
+
+export interface BestEffortDependencies {
+  now(): number;
+  delay(milliseconds: number): Promise<void>;
+  acquireLock(lockBudgetMs: number): Promise<BestEffortLock | null>;
+  appendUnlocked(record: SkillEvent): Promise<void>;
+}
+
+export interface BestEffortPolicy {
+  lockBudgetMs: number;
+  totalBudgetMs: number;
+}
+
+export interface BestEffortResult {
+  recorded: boolean;
+  reason: BestEffortReason | null;
+}
+
 const ID_FIELDS: Record<DurableRecordType, string> = {
   "skill-events": "event_id",
   scores: "score_id",
@@ -264,4 +287,53 @@ export async function readPartition<T>(
   } finally {
     await lock.release();
   }
+}
+
+const DEFAULT_BEST_EFFORT_POLICY = Object.freeze({ lockBudgetMs: 5, totalBudgetMs: 20 });
+
+export async function appendBestEffort(
+  dependencies: BestEffortDependencies,
+  record: SkillEvent,
+  policy: BestEffortPolicy = DEFAULT_BEST_EFFORT_POLICY,
+): Promise<BestEffortResult> {
+  if (!validateDurableRecordSchema("skill-events", record).ok) {
+    return { recorded: false, reason: "VALIDATION_FAILED" };
+  }
+  const startedAt = dependencies.now();
+  const acquisition = dependencies.acquireLock(policy.lockBudgetMs);
+  const lockTimeout = dependencies.delay(policy.lockBudgetMs).then(() => Symbol.for("lock-timeout"));
+  let acquired: BestEffortLock | null | symbol;
+  try {
+    acquired = await Promise.race([acquisition, lockTimeout]);
+  } catch {
+    return { recorded: false, reason: "IO_ERROR" };
+  }
+  if (typeof acquired === "symbol" || acquired === null) {
+    void acquisition.then(async (lateLock) => {
+      if (lateLock) await lateLock.release();
+    }).catch(() => undefined);
+    return { recorded: false, reason: "LOCK_TIMEOUT" };
+  }
+
+  const worker: Promise<BestEffortResult> = (async () => {
+    try {
+      await dependencies.appendUnlocked(record);
+      return { recorded: true, reason: null };
+    } catch {
+      return { recorded: false, reason: "IO_ERROR" };
+    } finally {
+      try {
+        await acquired.release();
+      } catch {
+        // Recording is observational; release failures stay bounded to this result.
+      }
+    }
+  })();
+  const elapsed = Math.max(0, dependencies.now() - startedAt);
+  const remaining = Math.max(0, policy.totalBudgetMs - elapsed);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  const deadline = dependencies.delay(remaining).then((): BestEffortResult => ({ recorded: false, reason: "DEADLINE_EXCEEDED" }));
+  return Promise.race([worker, deadline]);
 }
