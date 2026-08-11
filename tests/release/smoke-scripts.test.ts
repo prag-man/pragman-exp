@@ -40,14 +40,38 @@ test("live host smoke checks are non-mutating until an explicit opt-in", () => {
   assert.ok(![...codex.args, ...claude.args].some((argument) => argument === "publish" || argument === "deploy"));
   assert.equal([...codex.args, ...claude.args].join(" ").includes('{"lane":"fast"'), false);
   assert.match([...codex.args, ...claude.args].join(" "), /lowercase lane identifier/);
+  assert.match(codex.args.join(" "), /\.agents\/skills\/pragman-router\/SKILL\.md/);
+  assert.match(claude.args.join(" "), /\.claude\/skills\/pragman-router\/SKILL\.md/);
+  assert.equal(claude.args.join(" ").includes(".agents/skills/pragman-router"), false);
 });
 
 test("behavioral live mode is explicit, evidence-bound, and excludes the local Cursor acceptance", () => {
   assert.deepEqual(
     parseLiveHostArguments(["--behavioral", "--host", "codex", "--host", "claude-code", "--evidence", "evidence.json"]),
-    { hosts: ["codex", "claude-code"], json: false, mode: "behavioral", evidencePath: "evidence.json" },
+    {
+      hosts: ["codex", "claude-code"],
+      json: false,
+      mode: "behavioral",
+      evidencePath: "evidence.json",
+      skillIds: [
+        "pragman-analyze", "pragman-init", "pragman-prototype", "pragman-research",
+        "pragman-router", "pragman-shape", "pragman-unfck", "pragman-workspace",
+      ],
+    },
+  );
+  assert.deepEqual(
+    parseLiveHostArguments([
+      "--behavioral", "--host", "codex", "--skill", "pragman-prototype", "--skill", "pragman-unfck",
+      "--evidence", "evidence.json",
+    ]).skillIds,
+    ["pragman-prototype", "pragman-unfck"],
   );
   assert.throws(() => parseLiveHostArguments(["--behavioral", "--host", "codex"]), /--evidence/i);
+  assert.throws(
+    () => parseLiveHostArguments(["--behavioral", "--skill", "unknown-skill", "--evidence", "evidence.json"]),
+    /Unsupported live skill/i,
+  );
+  assert.throws(() => parseLiveHostArguments(["--check", "--skill", "pragman-init"]), /only valid with --behavioral/i);
   assert.throws(
     () => parseLiveHostArguments(["--behavioral", "--host", "cursor", "--evidence", "evidence.json"]),
     /Cursor.*behavioral/i,
@@ -75,9 +99,14 @@ test("behavioral execution hides the invariant rubric and grading derives the ex
   }];
   const executionPrompt = createBehavioralExecutionPrompt("pragman-init", scenarios);
   assert.match(executionPrompt, /Handle this bounded synthetic request/);
+  assert.match(executionPrompt, /one command per file/i);
+  assert.match(executionPrompt, /Do not use compound commands/i);
   assert.equal(executionPrompt.includes("preview_before_write"), false);
   assert.equal(executionPrompt.includes("expected_trigger"), false);
   assert.equal(executionPrompt.includes("expected_invariants"), false);
+  const claudeExecutionPrompt = createBehavioralExecutionPrompt("pragman-init", scenarios, "claude-code");
+  assert.match(claudeExecutionPrompt, /\.claude\/skills\/pragman-init\/SKILL\.md/);
+  assert.equal(claudeExecutionPrompt.includes(".agents/skills/pragman-init"), false);
 
   const executionSchema = createBehavioralExecutionSchema(scenarios);
   assert.deepEqual(executionSchema.properties.scenarios.items.properties.scenario_id.enum, ["bounded-case"]);
@@ -149,35 +178,36 @@ test("live behavioral evidence contains only digests, booleans, counts, and publ
 });
 
 test("Codex live evidence must show only a read-only Pragman router skill inspection", () => {
+  const hostRoot = "/tmp/live";
   const trace = [
-    JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc \"sed -n '1,220p' SKILL.md\"", aggregated_output: "---\nname: pragman-router\n---", status: "completed", exit_code: 0 } }),
-    JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc \"sed -n '1,220p' references/routing-contract.md\"", aggregated_output: "# Routing contract", status: "completed", exit_code: 0 } }),
+    JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc \"sed -n '1,220p' .agents/skills/pragman-router/SKILL.md\"", aggregated_output: "---\nname: pragman-router\n---", status: "completed", exit_code: 0 } }),
+    JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc \"sed -n '1,220p' .agents/skills/pragman-router/references/routing-contract.md\"", aggregated_output: "# Routing contract", status: "completed", exit_code: 0 } }),
     JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: 'PRAGMAN_SMOKE {"lane":"fast","interview":false,"egress":false,"writes":false}' } }),
   ].join("\n");
-  assert.deepEqual(assertCodexTrace(trace), { skill_reads: 1, command_count: 2 });
+  assert.deepEqual(assertCodexTrace(trace, hostRoot), { skill_reads: 1, command_count: 2 });
   assert.deepEqual(assertCodexTrace([
     JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "cat /tmp/live/.agents/skills/pragman-router/SKILL.md", aggregated_output: "name: pragman-router", status: "completed", exit_code: 0 } }),
     JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "cat /tmp/live/.agents/skills/pragman-router/COMPATIBILITY.md", aggregated_output: "compatible", status: "completed", exit_code: 0 } }),
-  ].join("\n")), { skill_reads: 1, command_count: 2 });
-  assert.deepEqual(assertCodexTrace(JSON.stringify({
+  ].join("\n"), hostRoot), { skill_reads: 1, command_count: 2 });
+  assert.throws(() => assertCodexTrace(JSON.stringify({
     type: "item.completed",
     item: {
       type: "command_execution",
-      command: "sed -n '1,120p' /tmp/live/.agents/skills/pragman-router/SKILL.md && sed -n '1,120p' /tmp/live/.agents/skills/pragman-router/references/routing-contract.md",
+      command: "/bin/zsh -lc \"sed -n '1,120p' .agents/skills/pragman-router/SKILL.md && sed -n '1,120p' .agents/skills/pragman-router/references/routing-contract.md\"",
       aggregated_output: "name: pragman-router",
       status: "completed",
       exit_code: 0,
     },
-  })), { skill_reads: 1, command_count: 1 });
-  assert.throws(() => assertCodexTrace(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "done" } })), /did not inspect/i);
-  assert.throws(() => assertCodexTrace(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "touch /tmp/live/.agents/skills/pragman-router/changed", status: "completed", exit_code: 0 } })), /non-read-only/i);
-  assert.throws(() => assertCodexTrace(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "cat /tmp/private.txt", status: "completed", exit_code: 0 } })), /outside pragman-router/i);
-  assert.throws(() => assertCodexTrace(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc \"sed -n '1,220p' SKILL.md\"", aggregated_output: "name: another-skill", status: "completed", exit_code: 0 } })), /outside pragman-router/i);
-  assert.throws(() => assertCodexTrace(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc \"cat references/../../private.md\"", status: "completed", exit_code: 0 } })), /non-read-only/i);
+  }), hostRoot), /one read-only command/i);
+  assert.throws(() => assertCodexTrace(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "done" } }), hostRoot), /did not inspect/i);
+  assert.throws(() => assertCodexTrace(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "touch /tmp/live/.agents/skills/pragman-router/changed", status: "completed", exit_code: 0 } }), hostRoot), /allowlisted read-only/i);
+  assert.throws(() => assertCodexTrace(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "cat /tmp/private.txt", status: "completed", exit_code: 0 } }), hostRoot), /outside pragman-router/i);
+  assert.throws(() => assertCodexTrace(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc \"awk '{print}' .agents/skills/pragman-router/SKILL.md\"", status: "completed", exit_code: 0 } }), hostRoot), /allowlisted read-only/i);
+  assert.throws(() => assertCodexTrace(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc \"cat .agents/skills/pragman-router/references/../../evals/forward.json\"", status: "completed", exit_code: 0 } }), hostRoot), /path escape/i);
   assert.throws(() => assertCodexTrace([
     JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "cat /tmp/live/.agents/skills/pragman-router/SKILL.md", aggregated_output: "name: pragman-router", status: "completed", exit_code: 0 } }),
     JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "cat /tmp/live/.agents/skills/pragman-router/evals/forward.json", status: "completed", exit_code: 0 } }),
-  ].join("\n")), /outside pragman-router/i);
+  ].join("\n"), hostRoot), /outside pragman-router/i);
   assert.throws(() => assertCodexTrace(JSON.stringify({
     type: "item.completed",
     item: {
@@ -187,7 +217,7 @@ test("Codex live evidence must show only a read-only Pragman router skill inspec
       status: "completed",
       exit_code: 0,
     },
-  })), /outside pragman-router/i);
+  }), hostRoot), /one skill file/i);
 });
 
 test("live host output must contain the exact content-free invariants", () => {
