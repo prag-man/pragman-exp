@@ -649,7 +649,13 @@ test("provides a concrete local dependency adapter for bounded observers", async
 
   try {
     const dependencies = await createLocalBestEffortDependencies(root);
-    assert.deepEqual(await appendBestEffort(dependencies, event()), { recorded: true, reason: null });
+    // This integration assertion verifies the concrete adapter avoids fsync;
+    // deterministic budget behavior is covered with fake clocks in
+    // best-effort.test.ts. Give loaded CI filesystems enough time to finish.
+    assert.deepEqual(
+      await appendBestEffort(dependencies, event(), { lockBudgetMs: 1_000, totalBudgetMs: 1_000 }),
+      { recorded: true, reason: null },
+    );
   } finally {
     prototype.sync = originalSync;
   }
