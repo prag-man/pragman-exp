@@ -24,7 +24,8 @@ test("normative ID rules document the provider and repository-source exceptions"
   assert.match(design, /repository sources are `<owner>\/<repo>`/);
 });
 
-test("pragman --version --json returns the stable automation envelope", () => {
+test("pragman --version --json returns the stable automation envelope", async () => {
+  const packageJson = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
   const result = spawnSync(
     process.execPath,
     [new URL("packages/cli/src/index.ts", root).pathname, "--version", "--json"],
@@ -45,7 +46,7 @@ test("pragman --version --json returns the stable automation envelope", () => {
   assert.equal(output.ok, true);
   assert.equal(output.command, "version");
   assert.equal(output.schema_version, 1);
-  assert.match(output.data.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(output.data.version, packageJson.version);
   assert.deepEqual(output.warnings, []);
   assert.equal(output.error, null);
 });
