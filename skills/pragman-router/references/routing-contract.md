@@ -12,7 +12,7 @@ Each data input carries an ID, source alias, category, and sensitivity (`public`
 
 Verify one route ID, parent route when nested, request digest, lane, scope/non-scope, assumptions, unresolved conflicts, capabilities, ordered providers, sequence policy, side effects, sanitized data aliases, effective sensitivity, egress approvals, proof, stop conditions, and creation time.
 
-The explanation must include lane reasons, matched rule IDs, eligible provider scoring, rejection reasons, sequence truncation, and fallback state. Equal scores use deterministic tie-breaking, never conversational preference.
+The explanation must state required capabilities before it names candidate or selected providers. Only after capabilities are explicit may it include lane reasons, matched rule IDs, eligible provider scoring, rejection reasons, sequence truncation, and fallback state. Equal scores use deterministic tie-breaking, never conversational preference.
 
 ## Approval boundary
 
