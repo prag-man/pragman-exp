@@ -1,6 +1,6 @@
 {
   "name": "@prag-man/pragman-exp",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.0",
   "private": false,
   "description": "Adaptive, local-first control panel for high-quality agentic work across skills, hosts, and workspaces.",
   "license": "MIT",
