@@ -22,6 +22,8 @@ Turn uncertainty into something the user can inspect, click, and decide on. A pr
 
 Return the artifact location, decision being tested, included flow and variants, assumptions intentionally omitted, local preview instructions, validation performed, and the exact next decision requested from the user. Label the artifact visibly as a prototype.
 
+Every triggered response must explicitly name the decision and the riskiest assumption being tested, even when artifact creation is blocked or deferred. When private research, brand material, or other sensitive sources are in scope, identify each only by its approved alias or source type and sensitivity, state that source content will not be reproduced, and restate the local-only/no-network boundary.
+
 ## CLI unavailable
 
 Create a self-contained HTML file from the bundled asset and explain how to open it locally. Disclose that deterministic packaging and report linking are unavailable. Never install dependencies or start a server without permission.
