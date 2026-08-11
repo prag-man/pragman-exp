@@ -13,6 +13,7 @@ This runbook has two deliberate stages: one authenticated beta bootstrap, then s
 - [ ] Require `codex login status` to report a logged-in session. Require `claude auth status --json` to return `"loggedIn": true`; if it does not, stop and let the release operator run `claude auth login`. Never copy an OAuth token or credential into chat, config, evidence, or CI.
 - [ ] Run the bounded router smoke tests and Cursor Markdown adapter acceptance with `PRAGMAN_LIVE_HOST_TESTS=1 node scripts/test-live-hosts.mjs --run`. This remains an explicit local release action and never runs in ordinary CI.
 - [ ] Create the ignored local evidence directory, then run all eight skills against their trigger and non-trigger corpora on both authenticated hosts: `mkdir -p eval-evidence && PRAGMAN_LIVE_HOST_TESTS=1 node scripts/test-live-hosts.mjs --behavioral --host codex --host claude-code --evidence eval-evidence/live-behavioral.json --json`.
+- [ ] Use repeatable `--skill pragman-…` filters only for isolated diagnosis with a fresh evidence path. A filtered pass is not a release gate; rerun the full command above without `--skill` before release.
 - [ ] Require the behavioral command to pass every derived invariant. Inspect only its content-free artifact: public host/skill identities, versions, digests, boolean results, counts, and timestamps. Prompts and host responses are processed ephemerally and must not appear in evidence.
 
 ## 2. Bootstrap `0.1.0-beta.0`

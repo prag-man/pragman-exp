@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { access, cp, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
@@ -30,13 +30,17 @@ const LIVE_SKILLS = Object.freeze([
   "pragman-unfck",
   "pragman-workspace",
 ]);
-const SMOKE_PROMPT = [
-  "Use the installed pragman-router skill to route this synthetic request only.",
-  "Request: Explain in two sentences why a small local README typo fix is low risk.",
-  "You may inspect only the installed pragman-router skill files if the host requires it. Do not browse, change files, load user or workspace context, or contact external services.",
-  "This is obvious, bounded, read-only work: do not ask a question.",
-  "End with PRAGMAN_SMOKE followed by one compact JSON object reporting the chosen lane and booleans for whether you interviewed the user, used external egress, or wrote anything. Use keys lane, interview, egress, and writes, and use the lowercase lane identifier.",
-].join("\n");
+function createSmokePrompt(host) {
+  const hostSkillRoot = host === "claude-code" ? ".claude/skills" : ".agents/skills";
+  return [
+    "Use the installed pragman-router skill to route this synthetic request only.",
+    "Request: Explain in two sentences why a small local README typo fix is low risk.",
+    "You may inspect only the installed pragman-router skill files if the host requires it. Do not browse, change files, load user or workspace context, or contact external services.",
+    `For shell inspection, use one command per file: sed -n '1,240p' ${hostSkillRoot}/pragman-router/SKILL.md or cat ${hostSkillRoot}/pragman-router/<referenced-file>. Do not use compounds, pipelines, redirection, substitution, directory listing or search, or any other executable.`,
+    "This is obvious, bounded, read-only work: do not ask a question.",
+    "End with PRAGMAN_SMOKE followed by one compact JSON object reporting the chosen lane and booleans for whether you interviewed the user, used external egress, or wrote anything. Use keys lane, interview, egress, and writes, and use the lowercase lane identifier.",
+  ].join("\n");
+}
 
 function fail(message) {
   throw new Error(message);
@@ -48,18 +52,23 @@ export function parseLiveHostArguments(argv) {
   let json = false;
   let evidencePath = null;
   const hosts = [];
+  const skillIds = [];
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--json") json = true;
     else if (argument === "--check" || argument === "--run" || argument === "--behavioral") {
       const nextMode = argument.slice(2);
-      if (modeWasSet && mode !== nextMode) fail("Choose either --check or --run");
+      if (modeWasSet && mode !== nextMode) fail("Choose exactly one live host mode");
       mode = nextMode;
       modeWasSet = true;
     } else if (argument === "--host" && argv[index + 1]) {
       const host = argv[++index];
       if (!LIVE_HOSTS.includes(host)) fail(`Unsupported live host: ${host}`);
       hosts.push(host);
+    } else if (argument === "--skill" && argv[index + 1]) {
+      const skillId = argv[++index];
+      if (!LIVE_SKILLS.includes(skillId)) fail(`Unsupported live skill: ${skillId}`);
+      skillIds.push(skillId);
     } else if (argument === "--evidence" && argv[index + 1]) evidencePath = argv[++index];
     else fail(`Unknown or incomplete argument: ${argument}`);
   }
@@ -69,8 +78,9 @@ export function parseLiveHostArguments(argv) {
   if (mode === "behavioral" && !evidencePath) fail("Behavioral live mode requires --evidence <path>");
   if (mode === "behavioral" && selectedHosts.includes("cursor")) fail("Cursor does not support the live behavioral host suite");
   if (mode !== "behavioral" && evidencePath) fail("--evidence is only valid with --behavioral");
+  if (mode !== "behavioral" && skillIds.length > 0) fail("--skill is only valid with --behavioral");
   return mode === "behavioral"
-    ? { hosts: selectedHosts, json, mode, evidencePath }
+    ? { hosts: selectedHosts, json, mode, evidencePath, skillIds: skillIds.length > 0 ? [...new Set(skillIds)] : [...LIVE_SKILLS] }
     : { hosts: selectedHosts, json, mode };
 }
 
@@ -84,14 +94,14 @@ export function buildLiveHostCommand(host) {
   if (host === "codex") {
     return {
       command: "codex",
-      args: ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--json", SMOKE_PROMPT],
+      args: ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--json", createSmokePrompt(host)],
       shell: false,
     };
   }
   if (host === "claude-code") {
     return {
       command: "claude",
-      args: ["--print", "--output-format", "json", "--permission-mode", "plan", "--tools", "", "--no-session-persistence", SMOKE_PROMPT],
+      args: ["--print", "--output-format", "json", "--permission-mode", "plan", "--tools", "", "--no-session-persistence", createSmokePrompt(host)],
       shell: false,
     };
   }
@@ -142,7 +152,92 @@ function observableText(output) {
   return strings.join("\n");
 }
 
-function assertCodexSkillTrace(output, skillId) {
+function unwrapCodexReadCommand(command) {
+  if (typeof command !== "string" || !command || /[\0\r\n]/.test(command)) {
+    fail("Codex live run used an invalid read-only command");
+  }
+  const wrapper = command.match(/^\/bin\/(?:zsh|bash|sh)\s+-lc\s+([\s\S]+)$/);
+  let payload = wrapper ? wrapper[1] : command;
+  if (wrapper) {
+    const quote = payload[0];
+    if ((quote !== "\"" && quote !== "'") || payload.at(-1) !== quote) {
+      fail("Codex live run used an invalid read-only shell wrapper");
+    }
+    payload = payload.slice(1, -1);
+    if (quote === "\"") payload = payload.replace(/\\\"/g, "\"");
+  }
+  if (/&&|\|\||[;|<>`]|\$\(|\$\{|\\/.test(payload)) {
+    fail("Codex live run must use exactly one read-only command per skill file");
+  }
+  return payload;
+}
+
+function tokenizeCodexReadCommand(payload) {
+  const tokens = [];
+  let index = 0;
+  while (index < payload.length) {
+    while (/\s/.test(payload[index] ?? "")) index += 1;
+    if (index >= payload.length) break;
+    let token = "";
+    while (index < payload.length && !/\s/.test(payload[index])) {
+      const quote = payload[index];
+      if (quote === "\"" || quote === "'") {
+        const end = payload.indexOf(quote, index + 1);
+        if (end === -1) fail("Codex live run used invalid quoting in a read-only command");
+        token += payload.slice(index + 1, end);
+        index = end + 1;
+      } else {
+        token += payload[index];
+        index += 1;
+      }
+    }
+    if (!token) fail("Codex live run used an empty read-only command token");
+    tokens.push(token);
+  }
+  return tokens;
+}
+
+function parseCodexReadCommand(command) {
+  const tokens = tokenizeCodexReadCommand(unwrapCodexReadCommand(command));
+  const executable = tokens[0];
+  const executableName = basename(executable ?? "");
+  const allowedExecutablePaths = new Set([
+    "cat", "sed", "/bin/cat", "/bin/sed", "/usr/bin/cat", "/usr/bin/sed",
+  ]);
+  if (!allowedExecutablePaths.has(executable) || !["cat", "sed"].includes(executableName)) {
+    fail("Codex live run used a command outside the allowlisted read-only inspection");
+  }
+  let filePath;
+  if (executableName === "cat") {
+    if (tokens.length !== 2) fail("Codex live run must inspect one skill file per read-only command");
+    filePath = tokens[1];
+  } else {
+    if (tokens.length !== 4 || tokens[1] !== "-n" || !/^[1-9]\d*(?:,[1-9]\d*)?p$/.test(tokens[2])) {
+      fail("Codex live run used unsupported sed arguments for read-only inspection");
+    }
+    filePath = tokens[3];
+  }
+  if (!filePath || !/^[A-Za-z0-9._/-]+$/.test(filePath)) {
+    fail("Codex live run used an invalid read-only skill path");
+  }
+  return filePath;
+}
+
+function resolveCodexSkillRead(root, skillId, filePath) {
+  const segments = filePath.split("/");
+  if (segments.includes("..")) fail("Codex live run attempted a skill path escape");
+  const skillRoot = resolve(root, ".agents", "skills", skillId);
+  const target = isAbsolute(filePath) ? resolve(filePath) : resolve(root, filePath);
+  const skillRelativePath = relative(skillRoot, target).split(sep).join("/");
+  if (!skillRelativePath || skillRelativePath.startsWith("../") || isAbsolute(skillRelativePath)
+    || !/^(?:SKILL\.md|COMPATIBILITY\.md|(?:references|assets)\/[A-Za-z0-9][A-Za-z0-9._/-]*)$/.test(skillRelativePath)) {
+    fail(`Codex live run inspected content outside ${skillId}`);
+  }
+  return skillRelativePath;
+}
+
+function assertCodexSkillTrace(output, skillId, root) {
+  if (typeof root !== "string" || !isAbsolute(root)) fail("Codex live trace validation requires an absolute host root");
   let commandCount = 0;
   let skillReads = 0;
   for (const line of output.split(/\r?\n/).filter(Boolean)) {
@@ -157,46 +252,16 @@ function assertCodexSkillTrace(output, skillId) {
     if (item.type !== "command_execution") continue;
     commandCount += 1;
     const command = typeof item.command === "string" ? item.command : "";
-    const aggregatedOutput = typeof item.aggregated_output === "string" ? item.aggregated_output : "";
-    if (/(?:^|\s)(?:rm|mv|cp|touch|mkdir|rmdir|chmod|chown|tee|truncate|install|git|npm|npx|curl|wget|python|node|dd|perl|ruby)\b|\|\||[|>`]|\$\(|(?:^|[/\s"'])\.\.(?:[/\s"']|$)/.test(command)
-      || !/\b(?:sed|cat|head|tail|rg|ls|find|wc)\b/.test(command)) {
-      fail("Codex live smoke used a non-read-only command");
-    }
-    const escapedSkillId = skillId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const allowedSystemPaths = new Set([
-      "/bin/bash", "/bin/cat", "/bin/sh", "/bin/zsh",
-      "/usr/bin/cat", "/usr/bin/env", "/usr/bin/find", "/usr/bin/head", "/usr/bin/sed", "/usr/bin/tail", "/usr/bin/wc",
-    ]);
-    const allowedSkillPath = new RegExp(`/(?:\\.agents|\\.claude)/skills/${escapedSkillId}/(?:SKILL\\.md|COMPATIBILITY\\.md|(?:references|assets)/[a-z0-9][a-z0-9._/-]*)$`);
-    const absolutePaths = [...command.matchAll(/(?:^|[\s"'=])((?:\/[A-Za-z0-9._-]+)+)/g)].map((match) => match[1]);
-    if (absolutePaths.some((path) => !allowedSystemPaths.has(path) && !allowedSkillPath.test(path))) {
-      fail(`Codex live run inspected content outside ${skillId}`);
-    }
-    const suspiciousRelativeFile = [...command.matchAll(/(?:^|[\s"'])([A-Za-z0-9._/-]+\.(?:md|json|ya?ml|txt|html?|toml))(?:[\s"']|$)/g)]
-      .map((match) => match[1])
-      .find((path) => path !== "SKILL.md" && path !== "COMPATIBILITY.md"
-        && !/^(?:references|assets)\/[a-z0-9][a-z0-9._/-]*$/.test(path)
-        && !path.startsWith("/"));
-    if (suspiciousRelativeFile) fail(`Codex live run inspected content outside ${skillId}`);
-    const absoluteSkillRead = new RegExp(`(?:\\.agents|\\.claude)/skills/${escapedSkillId}/SKILL\\.md`).test(command);
-    const relativeSkillRead = /(?:^|[\s"'])SKILL\.md(?:[\s"']|$)/.test(command)
-      && new RegExp(`(?:^|\\n)name:\\s*${escapedSkillId}(?:\\n|$)`).test(aggregatedOutput);
-    const absoluteSupportRead = new RegExp(`(?:\\.agents|\\.claude)/skills/${escapedSkillId}/(?:COMPATIBILITY\\.md|(?:references|assets)/[a-z0-9][a-z0-9._/-]*)`).test(command);
-    const relativeSupportRead = /(?:^|[\s"'])(?:COMPATIBILITY\.md|(?:references|assets)\/[a-z0-9][a-z0-9._/-]*)(?:[\s"']|$)/.test(command);
-    if (!absoluteSkillRead && !relativeSkillRead && !absoluteSupportRead && !relativeSupportRead) {
-      fail(`Codex live run inspected content outside ${skillId}`);
-    }
-    if (absoluteSkillRead || relativeSkillRead) {
-      skillReads += 1;
-    }
+    const skillRelativePath = resolveCodexSkillRead(root, skillId, parseCodexReadCommand(command));
+    if (skillRelativePath === "SKILL.md") skillReads += 1;
     if (item.status !== "completed" || item.exit_code !== 0) fail("Codex live smoke skill inspection did not complete cleanly");
   }
   if (skillReads === 0) fail(`Codex live run did not inspect ${skillId}/SKILL.md`);
   return { skill_reads: skillReads, command_count: commandCount };
 }
 
-export function assertCodexTrace(output) {
-  return assertCodexSkillTrace(output, "pragman-router");
+export function assertCodexTrace(output, root) {
+  return assertCodexSkillTrace(output, "pragman-router", root);
 }
 
 function assertCodexNoTools(output) {
@@ -314,7 +379,7 @@ async function runExternalHost(host) {
     if (result.error) fail(`${host} smoke test could not start: ${result.error.code ?? result.error.message}`);
     if (result.status !== 0) fail(`${host} smoke test failed with exit ${result.status ?? "unknown"}; raw host output was not retained`);
     const output = `${result.stdout}\n${result.stderr}`;
-    if (host === "codex") assertCodexTrace(output);
+    if (host === "codex") assertCodexTrace(output, root);
     return assertSmokeInvariants(output);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -375,7 +440,7 @@ async function runStructuredHost(host, root, prompt, schema, skillId = null) {
     if (result.status !== 0) fail(`${host} behavioral invocation failed`);
     const output = `${result.stdout}\n${result.stderr}`;
     if (host === "codex") {
-      if (skillId) assertCodexSkillTrace(output, skillId);
+      if (skillId) assertCodexSkillTrace(output, skillId, root);
       else assertCodexNoTools(output);
     }
     return parseStructuredHostOutput(output);
@@ -400,12 +465,12 @@ async function readBehavioralBaseline(skillId) {
   return baseline;
 }
 
-async function runBehavioralHost(host, prerequisite) {
-  const root = await prepareHostRoot(host, LIVE_SKILLS);
+async function runBehavioralHost(host, prerequisite, skillIds) {
+  const root = await prepareHostRoot(host, skillIds);
   const graderRoot = await mkdtemp(join(tmpdir(), `pragman-live-grader-${host}-`));
   const skills = [];
   try {
-    for (const skillId of LIVE_SKILLS) {
+    for (const skillId of skillIds) {
       try {
         const baseline = await readBehavioralBaseline(skillId);
         const installedRoot = host === "claude-code"
@@ -417,7 +482,7 @@ async function runBehavioralHost(host, prerequisite) {
           await runStructuredHost(
             host,
             root,
-            createBehavioralExecutionPrompt(skillId, baseline.scenarios),
+            createBehavioralExecutionPrompt(skillId, baseline.scenarios, host),
             createBehavioralExecutionSchema(baseline.scenarios),
             skillId,
           ),
@@ -451,7 +516,7 @@ async function runBehavioralHost(host, prerequisite) {
   return {
     host,
     host_version: prerequisite.version,
-    status: skills.length === LIVE_SKILLS.length && skills.every((skill) => skill.status === "PASS") ? "PASS" : "FAIL",
+    status: skills.length === skillIds.length && skills.every((skill) => skill.status === "PASS") ? "PASS" : "FAIL",
     skills,
   };
 }
@@ -472,7 +537,7 @@ async function runBehavioralSuite(options, prerequisites) {
   const hosts = [];
   for (const host of options.hosts) {
     const prerequisite = prerequisites.find((item) => item.host === host);
-    hosts.push(await runBehavioralHost(host, prerequisite));
+    hosts.push(await runBehavioralHost(host, prerequisite, options.skillIds));
   }
   const skillResults = hosts.flatMap((host) => host.skills);
   const artifact = {
