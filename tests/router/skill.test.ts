@@ -14,9 +14,11 @@ test("adaptive router skill keeps fast work fast and preserves operational appro
   ]);
   assert.match(skill, /Adaptive behavior is the default/);
   assert.match(skill, /without an interview/);
+  assert.match(skill, /required capabilities before naming, evaluating, recommending, or invoking any provider or brand/i);
   assert.match(skill, /preserve host-native approval/i);
   assert.match(skill, /CLI unavailable/);
   assert.match(reference, /request.*task_family.*desired_outcome/s);
+  assert.match(reference, /state required capabilities before it names candidate or selected providers/i);
   assert.deepEqual(baseline.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id), forward.scenarios.map((scenario: { scenario_id: string }) => scenario.scenario_id));
   assert.equal(baseline.scenarios.some((scenario: { case_type: string }) => scenario.case_type === "non-trigger"), true);
   assert.equal(forward.scenarios.every((scenario: { observation: { triggered: boolean } }) => typeof scenario.observation.triggered === "boolean"), true);
