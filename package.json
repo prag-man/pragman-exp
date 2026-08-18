@@ -2,7 +2,16 @@
   "name": "@prag-man/pragman-exp",
   "version": "0.1.0-beta.0",
   "private": false,
-  "description": "Adaptive, local-first control panel for high-quality agentic work across skills, hosts, and workspaces.",
+  "description": "Privacy-first agent skills and a local CLI for shaping, routing, researching, prototyping, and improving agentic work across Codex, Claude Code, and Cursor.",
+  "keywords": [
+    "agent-skills",
+    "ai-agents",
+    "codex",
+    "claude-code",
+    "cursor",
+    "developer-tools",
+    "workflow-automation"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -37,10 +46,12 @@
   ],
   "scripts": {
     "build": "tsc",
+    "prepare": "npm run build",
     "prepack": "npm run build",
+    "prepublishOnly": "npm run validate:skills && npm run package:verify",
     "test": "node scripts/run-tests.mjs",
     "validate:skills": "node scripts/validate-skills.mjs",
-    "package:verify": "node scripts/verify-package.mjs --json",
+    "package:verify": "npm run build && node scripts/verify-package.mjs --json",
     "eval": "node scripts/run-evals.mjs --mode skill-eval evals/fixtures/skill-events/baseline.json --observed evals/fixtures/skill-events/forward.json --output -",
     "evals": "node scripts/run-evals.mjs --mode skill-eval evals/fixtures/skill-events/baseline.json --observed evals/fixtures/skill-events/forward.json --output -"
   },

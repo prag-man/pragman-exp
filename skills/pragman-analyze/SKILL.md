@@ -1,11 +1,21 @@
 ---
 name: pragman-analyze
-description: Use when examining a project, decision, incident, experiment, release, workflow, or completed body of work to explain outcomes and improve the next iteration.
+description: Use after a project, decision, incident, experiment, release, or workflow to explain outcomes from evidence and choose the highest-leverage next improvements.
 ---
 
 # Pragman Analyze
 
 Produce a decision-grade analysis grounded in observable evidence. A good result preserves successful patterns, identifies causes without hindsight theater, and turns learning into explicit options—not silent configuration changes.
+
+## Use this skill when
+
+- Work finished, stalled, or drifted and the next iteration should learn from what actually happened.
+- You have artifacts, diffs, tests, decisions, event aggregates, or carefully bounded user context to compare with the intended outcome.
+- You need explicit Keep/Change/Stop/Automate/Learn/Test next actions rather than a generic retrospective.
+
+## Acceleration payoff
+
+It turns expensive rework into reusable operating learning while keeping confidence, evidence gaps, and trade-offs visible.
 
 ## Workflow
 

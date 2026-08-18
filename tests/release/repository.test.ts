@@ -33,6 +33,32 @@ test("README documents the complete portable surface and operating model", async
   assert.match(readme, /content-free event/i);
   assert.match(readme, /direct skill use.*not automatically/is);
   assert.match(readme, /skills\.sh/i);
+  assert.match(readme, /@prag-man\/pragman-exp@beta/);
+  assert.match(readme, /github:prag-man\/pragman-exp/);
+  assert.match(readme, /What it accelerates/i);
+  assert.match(readme, /A fast operating loop/i);
+});
+
+test("npm metadata makes the scoped beta package and source fallback unambiguous", async () => {
+  const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
+    name?: string;
+    private?: boolean;
+    description?: string;
+    keywords?: string[];
+    publishConfig?: { access?: string };
+    bin?: { pragman?: string };
+    scripts?: Record<string, string>;
+  };
+  assert.equal(manifest.name, "@prag-man/pragman-exp");
+  assert.equal(manifest.private, false);
+  assert.match(manifest.description ?? "", /privacy-first.*agent skills.*local CLI/i);
+  assert.ok(manifest.keywords?.includes("agent-skills"));
+  assert.ok(manifest.keywords?.includes("ai-agents"));
+  assert.equal(manifest.publishConfig?.access, "public");
+  assert.equal(manifest.bin?.pragman, "dist/packages/cli/src/index.js");
+  assert.match(manifest.scripts?.prepare ?? "", /npm run build/);
+  assert.match(manifest.scripts?.prepublishOnly ?? "", /validate:skills/);
+  assert.match(manifest.scripts?.["package:verify"] ?? "", /verify-package\.mjs/);
 });
 
 test("CI covers macOS and Ubuntu on Node.js 22 and 24", async () => {

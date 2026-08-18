@@ -77,7 +77,7 @@ test("pragman-init package carries portable degradation and paired behavioral ev
   assert.match(skill, /do not write or claim (?:a )?scan/i);
   assert.match(skill, /preview/i);
   assert.match(discovery, /never read credential|never read secret/i);
-  assert.match(compatibility, />=0\.1\.0 <1\.0\.0/);
+  assert.match(compatibility, />=0\.1\.0-beta\.0 <1\.0\.0/);
   assert.match(metadata, /\$pragman-init/);
   assert.equal(baseline.scenarios.length >= 3, true);
   assert.deepEqual(forward.scenarios.map((entry: { scenario_id: string }) => entry.scenario_id), baseline.scenarios.map((entry: { scenario_id: string }) => entry.scenario_id));

@@ -1,6 +1,6 @@
 # Compatibility
 
-- Pragman CLI: `>=0.1.0 <1.0.0`
+- Pragman CLI: `>=0.1.0-beta.0 <1.0.0`
 - Node.js: `>=22 <25`
 - Tested skill hosts: Codex, Claude Code, Cursor portable skill mode
 

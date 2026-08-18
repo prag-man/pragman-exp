@@ -1,11 +1,21 @@
 ---
 name: pragman-router
-description: Use as the adaptive front door for non-trivial, ambiguous, multi-domain, operational, or explicitly routed work; skip the interview for obvious bounded requests.
+description: Use as the adaptive front door for non-trivial, ambiguous, multi-domain, operational, or explicitly routed work to choose the smallest safe capability sequence; skip it for obvious bounded requests.
 ---
 
 # Pragman Router
 
 Shape only as much as the route requires, then select capabilities—not brands—from the user's installed and approved skill ecosystem. Adaptive behavior is the default.
+
+## Use this skill when
+
+- You need to decide whether a request should be answered directly, shaped, researched, prototyped, or executed.
+- Work crosses skills/providers or includes meaningful writes, egress, cost, privacy, credentials, or reversibility concerns.
+- You want a compact task contract and disclosed fallback instead of blind provider selection.
+
+## Acceleration payoff
+
+It prevents over-planning simple work and under-scoping risky work by selecting the lightest trustworthy route and preserving approval boundaries.
 
 ## Workflow
 

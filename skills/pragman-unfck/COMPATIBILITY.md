@@ -1,6 +1,6 @@
 # Compatibility
 
-- Pragman CLI: `>=0.1.0 <1.0.0`
+- Pragman CLI: `>=0.1.0-beta.0 <1.0.0`
 - Codex session JSONL: format `1`
 - Claude Code project JSONL: format `1`
 - Cursor exported Markdown: format `1`

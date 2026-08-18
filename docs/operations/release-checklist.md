@@ -25,7 +25,8 @@ The first scope/package publication cannot use trusted publishing until npm know
 - [ ] Run `npx npm@11.5.1 whoami`. If it fails, stop at this **mandatory credential gate** and ask the package owner to authenticate locally. Do not request or copy a token into configuration, chat, logs, or GitHub Actions.
 - [ ] Publish the verified archive once: `npx npm@11.5.1 publish <archive> --access public --tag beta`.
 - [ ] Confirm npm resolves `@prag-man/pragman-exp@beta` to `0.1.0-beta.0` with the expected integrity and repository.
-- [ ] Install the beta into a temporary prefix and run its `pragman doctor --json`.
+- [ ] Install the beta into a temporary prefix with `npm install --global --prefix <temporary-prefix> @prag-man/pragman-exp@beta` and run its `pragman doctor --json`.
+- [ ] Confirm `npm view @prag-man/pragman-exp@beta version` no longer returns `E404`; the scoped package name is intentional and the executable remains `pragman`.
 - [ ] Do not call v1 complete and do not create the stable GitHub release from the beta.
 
 ## 3. Configure stable trusted publishing
