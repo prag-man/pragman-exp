@@ -1,11 +1,21 @@
 ---
 name: pragman-shape
-description: Use when an idea or request is vague, oversized, premature, low-evidence, or needs to become a decision, experiment, prototype, issue, spec, or implementation-ready task.
+description: Use when an idea or request is vague, oversized, premature, or low-evidence and must become a bounded decision, experiment, prototype, issue, spec, or implementation-ready task.
 ---
 
 # Pragman Shape
 
 Turn an ambiguous opportunity into the smallest valuable, testable contract. Preserve uncertainty where evidence is weak and prevent solution detail from outrunning the problem.
+
+## Use this skill when
+
+- A request starts as a feature idea, roadmap item, bug, or ambition but its outcome and boundary are unclear.
+- You need to decide what not to build, which assumption matters most, and what evidence would kill the bet.
+- Implementation is tempting before the user, constraints, dependencies, or approval boundary are understood.
+
+## Acceleration payoff
+
+It converts ambiguity into a small learning loop so teams stop building roadmap-sized guesses and start with evidence-producing work.
 
 ## Workflow
 

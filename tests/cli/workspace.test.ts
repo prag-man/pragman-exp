@@ -174,7 +174,7 @@ test("validate reports linked provenance and additional conflicts without privat
 
 test("workspace mutations fail closed on secret-like values and symlinked history", async () => {
   const { root, personalRoot, companyRoot, projectRoot } = await fixture();
-  const secret = workspace("company", companyRoot);
+  const secret: ReturnType<typeof workspace> & { description?: string } = workspace("company", companyRoot);
   secret.description = "api_key=sk-proj-12345678901234567890";
   const denied = invoke(["workspace", "add", "--config", personalRoot], secret);
   assert.equal(denied.status, 5, denied.stderr);
@@ -236,7 +236,7 @@ test("pragman-workspace package carries portable degradation and paired behavior
   assert.deepEqual(frontmatter.split("\n").map((line) => line.split(":", 1)[0]), ["name", "description"]);
   assert.match(skill, /CLI unavailable/);
   assert.match(skill, /do not write or claim validation/i);
-  assert.match(compatibility, />=0\.1\.0 <1\.0\.0/);
+  assert.match(compatibility, />=0\.1\.0-beta\.0 <1\.0\.0/);
   assert.match(metadata, /\$pragman-workspace/);
   assert.equal(baseline.scenarios.length >= 3, true);
   assert.deepEqual(forward.scenarios.map((entry: { scenario_id: string }) => entry.scenario_id), baseline.scenarios.map((entry: { scenario_id: string }) => entry.scenario_id));

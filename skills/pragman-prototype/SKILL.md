@@ -1,11 +1,21 @@
 ---
 name: pragman-prototype
-description: Use when a product, workflow, or UI decision will improve by seeing and clicking a disposable artifact before committing to production implementation.
+description: Use when a product, workflow, or UI decision needs a disposable clickable artifact to test its riskiest assumption before production implementation.
 ---
 
 # Pragman Prototype
 
 Turn uncertainty into something the user can inspect, click, and decide on. A prototype is a decision artifact, not an early production implementation.
+
+## Use this skill when
+
+- A product, workflow, or UI direction is hard to evaluate from prose alone.
+- You need to compare one or two meaningful alternatives before paying the cost of production code.
+- Feedback, accessibility, responsive behavior, or a local-only safety boundary must be exercised early.
+
+## Acceleration payoff
+
+It replaces speculative implementation with a fast, reversible decision artifact that exposes wrong assumptions before they become rework.
 
 ## Workflow
 

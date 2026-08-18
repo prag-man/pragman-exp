@@ -1,11 +1,21 @@
 ---
 name: pragman-research
-description: Use when a decision or deliverable needs current external, technical, market, competitive, internal-workspace, or multi-source evidence.
+description: Use when a decision or deliverable needs current external, technical, market, competitive, internal-workspace, or multi-source evidence tied to an actionable recommendation.
 ---
 
 # Pragman Research
 
 Research starts with the decision it must enable. Match effort to consequence, use the strongest available sources, and finish with an actionable synthesis rather than a reading list.
+
+## Use this skill when
+
+- A choice depends on current facts, primary documentation, market evidence, technical comparisons, or bounded internal context.
+- You need a source plan, freshness boundary, confidence, and explicit stopping rule rather than an unbounded reading list.
+- Multiple research capabilities may help, but private data and external egress must remain deliberate.
+
+## Acceleration payoff
+
+It spends research effort where it can change the decision, separates facts from inference, and finishes with a clear action and revisit signal.
 
 ## Workflow
 

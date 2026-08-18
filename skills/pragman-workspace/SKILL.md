@@ -1,11 +1,21 @@
 ---
 name: pragman-workspace
-description: Use when creating, inspecting, linking, changing, or validating personal, company, client, venture, or project context; not for one-off facts that should remain only in the current request.
+description: Use when creating, inspecting, linking, changing, or validating reusable personal, company, client, venture, or project context; keep one-off facts in the current request.
 ---
 
 # Pragman Workspace
 
 Keep reusable context useful without blending organizations or exposing source content. A project has one primary workspace; explicitly ordered additional workspaces are advisory and never silently override it.
+
+## Use this skill when
+
+- You work across clients, companies, ventures, or projects and need durable context without cross-boundary leakage.
+- A project needs one explicit primary workspace plus deliberately ordered advisory context.
+- Context sources, privacy, ownership, links, or conflicts should be validated before an agent relies on them.
+
+## Acceleration payoff
+
+It prevents repeated context dumps and wrong-tenant assumptions by making reusable context indexed, layered, attributable, and reversible.
 
 ## Workflow
 
@@ -20,7 +30,7 @@ Use capability `pragman.route` after context is valid. Keep project-specific con
 
 ## CLI unavailable
 
-Disclose that schema validation, digest binding, atomic writes, link integrity, audit snapshots, and rollback guarantees are unavailable. Draft the proposed YAML and context index for review, but do not write or claim validation. Offer `npm install --global @prag-man/pragman-exp`; never install automatically.
+Disclose that schema validation, digest binding, atomic writes, link integrity, audit snapshots, and rollback guarantees are unavailable. Draft the proposed YAML and context index for review, but do not write or claim validation. Offer `npm install --global @prag-man/pragman-exp@beta` for the current prerelease; never install automatically.
 
 ## Guardrails
 
